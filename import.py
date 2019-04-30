@@ -7,60 +7,60 @@
 # Notice:       Created for academic assessment. Do not re-use or
 #               redistribute without permission from author.
 # =================================================================================================================== #
-# Import Libraries                              # Requirements:
+# Import Libraries                                  # Requirements:
 # =================================================================================================================== #
-import os                                       # Directory and
-import shutil                                   # file manipulation
-import arcpy                                    # Vector file manipulation
-from pci.fimport import *                       # PIX format conversion
-from pci.clip import *                          # Clipping to AOI
-from pci.resamp import *                        # Resample 60m bands
-from pci.datamerge import *                     # Merging bands
-from pci.str import str as stretch              # Histogram stretching
-from pci.lut import *                           # Enhancement
-from pci.pcimod import *                        # Add layers
-from pci.pca import *                           # Principal Components
+import os                                           # Directory and
+import shutil                                       # file manipulation
+import arcpy                                        # Vector file manipulation
+from pci.fimport import *                           # PIX format conversion
+from pci.clip import *                              # Clipping to AOI
+from pci.resamp import *                            # Resample 60m bands
+from pci.datamerge import *                         # Merging bands
+from pci.str import str as stretch                  # Histogram stretching
+from pci.lut import *                               # Enhancement
+from pci.pcimod import *                            # Add layers
+from pci.pca import *                               # Principal Components
 from pci.nspio import Report, enableDefaultReport   # Report output
-from pci.exceptions import PCIException         # Throwing errors
-from pci.fexport import *                       # Export to TIF format
-from pci.masking import *
-from pci.hazerem import *
-from pci.atcor import *
-from pci.kclus import *
-from pci.ras2poly import *
+from pci.exceptions import PCIException             # Throwing errors
+from pci.fexport import *                           # Export to TIF format
+from pci.masking import *                           # Cloud and haze masking
+from pci.hazerem import *                           # Haze removal
+from pci.atcor import *                             # Atmospheric correction
+from pci.kclus import *                             # Unsupervised K-Means classifier
+from pci.ras2poly import *                          # Raster to Polygon conversion
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
 # ------------------------------------------------------------------------------------------------------------------- #
-global sen2                         # Sensor name used in pci correction
-sen2 = "Sentinel-2"                 # functions.
-global pixfiles10                   # Initialize list of converted 10m
+global sen2                                         # Sensor name used in pci correction
+sen2 = "Sentinel-2"                                 # functions.
+global pixfiles10                                   # Initialize list of converted 10m
 pixfiles10 = []
-global pixfiles_m                   # Initialize list of full band pix
+global pixfiles_m                                   # Initialize list of full band pix
 pixfiles_m = []
-global workspace_list               # Workspace directory list
-workspace_list = []                 # for iterative folder preparation
+global workspace_list                               # Workspace directory list
+workspace_list = []                                 # for iterative folder preparation
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Initialize path variables:
 # ------------------------------------------------------------------------------------------------------------------- #
-workingdir = os.path.join("F:/","sable/")           # Main directory
-indir = os.path.join(workingdir, "input")         # Raw S2 input
+workingdir = os.getcwd()                            # Get current working directory
+indir = os.path.join(workingdir, "input")           # Sentinel input files
 clipvec = os.path.join(workingdir, "clip_extent", "clip_ext.pix")
 
-mergedir = os.path.join(workingdir, "mergefiles")
+mergedir = os.path.join(workingdir, "mergefiles")   # File lists for layer-stacking image
 workspace_list.append(mergedir)
 
-corrdir = os.path.join(workingdir, "atcor")       # Corrected pix output
+corrdir = os.path.join(workingdir, "atcor")         # Corrected pix output
 workspace_list.append(corrdir)
 
-pixdir = os.path.join(workingdir, "pix")          # Pix workspace
+pixdir = os.path.join(workingdir, "pix")            # Pix workspace
 workspace_list.append(pixdir)
 
-pcadir = os.path.join(workingdir, "pca")          # PCA output
+pcadir = os.path.join(workingdir, "pca")            # PCA output
 workspace_list.append(pcadir)
 
-coastdir = os.path.join(workingdir, "coastline")  # Coastline output
+coastdir = os.path.join(workingdir, "coastline")    # Coastline output
 workspace_list.append(coastdir)
 
      
