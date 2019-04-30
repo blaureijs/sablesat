@@ -1,4 +1,4 @@
-# ====================================================================== #
+# =================================================================================================================== #
 # Script Name:	data_prep.py
 # Author:	    Brian Laureijs
 # Purpose:      Convert and run functions on Sentinel-2 imagery for Sable
@@ -6,9 +6,9 @@
 # Version:      0.1.0
 # Notice:       Created for academic assessment. Do not re-use or
 #               redistribute without permission from author.
-# ====================================================================== #
+# =================================================================================================================== #
 # Import Libraries                              # Requirements:
-# ====================================================================== #
+# =================================================================================================================== #
 import os                                       # Directory and
 import shutil                                   # file manipulation
 import arcpy                                    # Vector file manipulation
@@ -29,9 +29,9 @@ from pci.atcor import *
 from pci.kclus import *
 from pci.ras2poly import *
 
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 global sen2                         # Sensor name used in pci correction
 sen2 = "Sentinel-2"                 # functions.
 global pixfiles10                   # Initialize list of converted 10m
@@ -41,9 +41,9 @@ pixfiles_m = []
 global workspace_list               # Workspace directory list
 workspace_list = []                 # for iterative folder preparation
 
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 # Initialize path variables:
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 workingdir = os.path.join("F:/","sable/")           # Main directory
 indir = os.path.join(workingdir, "input")         # Raw S2 input
 clipvec = os.path.join(workingdir, "clip_extent", "clip_ext.pix")
@@ -64,7 +64,7 @@ coastdir = os.path.join(workingdir, "coastline")  # Coastline output
 workspace_list.append(coastdir)
 
      
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 # Define correction() function:
 #   1. Process masks for raw pix image.
 #   2. Process haze removal for pix image.
@@ -73,7 +73,7 @@ workspace_list.append(coastdir)
 #   piximage    - The input pix format image.
 #   hazeout     - The output haze corrected image.
 #   atcorout    - The output atmospherically corrected image.
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 def correction(piximage, hazeout, atcorout):
     print "-" * 50
     print "\tProcessing masks..."
@@ -105,7 +105,7 @@ def correction(piximage, hazeout, atcorout):
     print "\t%s atmospheric correction completed." % piximage
 
 
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 # Define readtopix() function
 #   1. Read folders from input directory to list.
 #   2. Append XML and band resolutions so PCI can read input.
@@ -113,7 +113,7 @@ def correction(piximage, hazeout, atcorout):
 #   4. Append pix files to list.
 # Parameters:
 #   indir   - The directory to read raw files from.
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 def readtopix(indir):
     infiles = os.listdir(indir)                 # List input folders
     for i in range(len(infiles)):               # Add path for 10m S2 Bands
@@ -213,7 +213,7 @@ def readtopix(indir):
         print "\tWrote files to:\n\t%s\n\t%s\n\t%s\n\t%s" %(pix10, pix20, pix60resamp, pix_merged)
     
 
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 # Define make_pca() function:                    -- RUN ON RAW DATA ONLY
 #   1. Generate a linear stretch LUT for mosaicked pix
 #   2. Apply LUT enhancement to pix mosaic
@@ -226,7 +226,7 @@ def readtopix(indir):
 #   The code for this section was adapted from sample at
 #   https://support.pcigeomatics.com/hc/en-us/community/posts/
 #   203566673-Write-report-to-file-in-python (Shawn Melamed, 2015)
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 
 def make_pca(merged_input,pca_out,identifier):
     print "\tStarting Principal Component Analysis for file %s" %identifier 
@@ -255,14 +255,14 @@ def make_pca(merged_input,pca_out,identifier):
     print "\tPCA for %s completed." %identifier
               
     
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 # Define enhance_pca() function
 #   1. Generate a linear stretch LUT for the PCA result.
 #   2. Apply LUT enhancement to PCA and output to new file.
 # Parameters:
 #   pcain   - The input PIX format file that make_pca() was run on.
 #   pcaout  - The output file for the enhanced PCA composite.
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------------------------------------------------- #
 def enhance_pca(pcain, pcaout, identifier):
     print "\tGenerating look-up tables for file %s" %identifier
     stretch(file=pcain,
@@ -294,50 +294,68 @@ def enhance_pca(pcain, pcaout, identifier):
     print "\tPCA enhancement for %s complete." %identifier
 
 
+# ------------------------------------------------------------------------------------------------------------------- #
+# Define coastline() function:                                              -- Must be run AFTER make_pca() completes
+#   1. Export PCA layers to scratch pix file.
+#   2. Add layer for classification result
+#   3. Run unsupervised k-means clustering algorithm and output to new layer
+#   4. Export classification raster to polygon shapefile
+#   5. Select Sable Island polygon(s) that contain selection points (selection_polygons.shp)
+#   6. Convert to polyline format and smooth line to remove zig-zag from raster cells.
+# Parameters:
+#   pixin           - The input PIX format file with PCA output layers.
+#   coastscr        - The output scratch pix file location for the classification layer.
+#   polygonout      - The output polygon format vector file.
+#   lineout         - The output polyline format vector file.
+#   lineout_smooth  - The output polylines with a line smoothing algorithm applied.
+#   identifier      - Unique identifier string read from input file name.
+# ------------------------------------------------------------------------------------------------------------------- #
+
 def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
     print "\tGenerating coastline classification..."
     id_string="Coastline from file %s." % identifier
-    fexport(fili=pixin,
-            filo=coastscr,
+    fexport(fili=pixin,                                             # Input with PCA
+            filo=coastscr,                                          # Output scratch file
             dbiw=[],
-            dbic=[11, 12, 13],
+            dbic=[11, 12, 13],                                      # PCA channels
             dbib=[],
             dbvs=[],
             dblut=[],
             dbpct=[],
-            ftype="PIX",
+            ftype="PIX",                                            # PIX filetype
             foptions="")
-    pcimod(file=coastscr,
-           pciop='ADD',
-           pcival=[0, 2, 0, 0])
-    kclus(file=coastscr,
-          dbic=[1, 2, 3],
-          dboc=[4],
-          numclus=[2],
+    pcimod(file=coastscr,                                           # Output scratch PIX file
+           pciop='ADD',                                             # Modification mode "Add"
+           pcival=[0, 2, 0, 0])                                     # Task - add two 16U channels
+    kclus(file=coastscr,                                            # Run classification on scratch file
+          dbic=[1, 2, 3],                                           # Use three PCA layers
+          dboc=[4],                                                 # Output to blank layer
+          numclus=[2],                                              # Two clusters - land, ocean
           seedfile='',
           maxiter=[20],
           movethrs=[],
           siggen="YES",
           backval=[],
           nsam=[])
-    ras2poly(fili=coastscr,
-             dbic=[4],
-             filo=polygonout,
-             smoothv="YES",
-             dbsd=id_string,
-             ftype="SHP",
+    ras2poly(fili=coastscr,                                         # Use scratch PIX file
+             dbic=[4],                                              # Use classification channel
+             filo=polygonout,                                       # Polygon SHP output location
+             smoothv="YES",                                         # Smooth boundaries
+             dbsd=id_string,                                        # Layer description string
+             ftype="SHP",                                           # Shapefile format
              foptions="")
     selpoints = os.path.join(workingdir,"selection_points","selection_polygons.shp")
-    workspace = os.path.join(workingdir,"sable.gdb")
-    polygonout_lyr = identifier + "_polygon_lyr"
-    arcpy.env.workspace = workspace
-    arcpy.MakeFeatureLayer_management(polygonout,polygonout_lyr)
+    workspace = os.path.join(workingdir,"sable.gdb")                # Define GDB workspace
+    polygonout_lyr = identifier + "_polygon_lyr"                    # Define feature layer name for polygon output
+    arcpy.env.workspace = workspace                                 # Set default workspace
+    arcpy.MakeFeatureLayer_management(polygonout,polygonout_lyr)    # Make polygon feature layer
 
-    # Select Island features by intersection with points.
-    # Remove selection of features larger than 1B sq. m - this feature represents ocean.
-    try:
+    # Select island polygons that contain selection circle polygons (small, basically points).
+    # These points are placed where the island is likely to exist.
+    # Remove selection of features larger than 1B sq. m - this feature most likely represents ocean.
+    try:                                                    # Does feature layer 'selpoints_lyr' exist yet?
         arcpy.SelectLayerByLocation_management(polygonout_lyr,'CONTAINS','selpoints_lyr','','NEW_SELECTION')
-    except:
+    except:                                                 # Didn't work, so create 'selpoints_lyr' first
         arcpy.MakeFeatureLayer_management(selpoints, 'selpoints_lyr')
         arcpy.SelectLayerByLocation_management(polygonout_lyr, 'CONTAINS', 'selpoints_lyr', '', 'NEW_SELECTION')
     arcpy.SelectLayerByAttribute_management(polygonout_lyr,'REMOVE_FROM_SELECTION','"Area" > 1000000000')
@@ -348,6 +366,16 @@ def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
     # Smooth line features to fix zig-zag from raster cells
     arcpy.cartography.SmoothLine(lineout,lineout_smooth,"PAEK",50,"")
 
+    return lineout_smooth
+
+# ------------------------------------------------------------------------------------------------------------------- #
+# Define prep_workspace() function
+#   1. Check if "input" directory exists and prompt user if it does not
+#   2. For rest of folders, create new if they do not exist, or delete contents and make new folder if they do.
+# Parameters:
+#   indir       - The input image file directory; has to be handled differently so contents are not deleted
+#   folder_list - The list of output folders that should be cleared before processing is started.
+# ------------------------------------------------------------------------------------------------------------------- #
 
 def prep_workspace(indir,folder_list):
     if os.path.isdir(indir) == False:
@@ -363,12 +391,12 @@ def prep_workspace(indir,folder_list):
               print "\tCreated %s" % folder_list[i]
 
 
-# ----------------------------------------------------------------------#
+# ------------------------------------------------------------------------------------------------------------------- #
 # Define mainline function
 #   1. Clear folders if they already exist, create folders if missing
 #   2. Read input to pix format
 #   3.
-# ----------------------------------------------------------------------#
+# ------------------------------------------------------------------------------------------------------------------- #
 def main():
 
     prep_workspace(indir, workspace_list)   # Prepare workspace
@@ -397,11 +425,11 @@ def main():
 
 main()
 
-# ----------------------------------------------------------------------#
+# ------------------------------------------------------------------------------------------------------------------- #
 # Mainline
 #   - Loop to stop script from autorunning if user is unaware of file
 #     deletion at beginning of script.
-# ----------------------------------------------------------------------#
+# ------------------------------------------------------------------------------------------------------------------- #
 
 # print "="*50                                    # Header
 # print "Sentinel-2 Mosaicking Script"
