@@ -28,6 +28,7 @@ from pci.hazerem import *                           # Haze removal
 from pci.atcor import *                             # Atmospheric correction
 from pci.kclus import *                             # Unsupervised K-Means classifier
 from pci.ras2poly import *                          # Raster to Polygon conversion
+from pci.ras2bit import *                           # Raster to Bitmap conversion
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
@@ -63,6 +64,9 @@ workspace_list.append(pcadir)
 coastdir = os.path.join(workingdir, "coastline")    # Coastline output
 workspace_list.append(coastdir)
 
+maskdir = os.path.join(workingdir, "masks")         # Cloud mask output
+workspace_list.append(maskdir)
+
      
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define correction() function:
@@ -76,15 +80,15 @@ workspace_list.append(coastdir)
 # ------------------------------------------------------------------------------------------------------------------- #
 def correction(piximage, hazeout, atcorout):
     print "-" * 50
-    print "\tProcessing masks..."
+    print "Processing masks..."
     masking(fili=piximage,                          # Input pix
             asensor=sen2,                           # Sentinel-2
             visirchn=[1, 3, 4],                     # B, R, NIR channels
             hazecov=[25],                           # Haze coverage
             clthresh=[-1, -1, -1],                  # Default cloud reflectance threshold
             filo=piximage)                          # Output (same file)
-    print "\tMasks for %s completed" % piximage
-    print "\tProcessing haze removal... (This may take a while)"
+    print "Masks for %s completed" % piximage
+    print "Processing haze removal... (This may take a while)"
     hazerem(fili=piximage,                          # Input pix
             asensor=sen2,                           # Sentinel-2
             visirchn=[1, 3, 4],                     # B, R, NIR channels
@@ -93,8 +97,8 @@ def correction(piximage, hazeout, atcorout):
             maskseg=[2, 3, 4],                      # Haze, Cloud, Water mask channels
             hazecov=[50],                           # Haze coverage default 50
             filo=hazeout)                           # Output pix
-    print "\tHaze removed from %s." % piximage
-    print "\tProcessing atmospheric correction..."
+    print "Haze removed from %s." % piximage
+    print "Processing atmospheric correction..."
     atcor(fili=hazeout,                             # Haze corrected input
           asensor=sen2,                             # Sentinel-2
           maskfili=piximage,                        # Mask file
@@ -102,7 +106,7 @@ def correction(piximage, hazeout, atcorout):
           atmcond="summer",                         # Atmosphere conditions
           outunits="16bit_Reflectance",             # Output
           filo=atcorout)                            # Corrected pix
-    print "\t%s atmospheric correction completed." % piximage
+    print "%s atmospheric correction completed." % piximage
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -137,7 +141,7 @@ def readtopix(indir):
         pix60 = "pix/" + mission + "_" + date + "_atmospheric_60m.pix"
         pix60resamp = "pix/" + mission + "_" + date + "_atmospheric_60m_resamp_10m.pix"
 
-        print "\tStarting pix conversion file %s_%s." %(mission,date)
+        print "Starting pix conversion file %s_%s." %(mission,date)
         fimport(fili_10, pix10full)         # Import R,G,B,NIR bands
         fimport(fili_20, pix20full)         # Import RE,NIR,SWIR bands
         fimport(fili_60, pix60full)         # Import Coastal, Vapour, Cirrus
@@ -209,8 +213,8 @@ def readtopix(indir):
         ##       pxszout=[rscale,rscale])
 
 
-        print "\tPix conversion completed for %s_%s:" %(mission,date)
-        print "\tWrote files to:\n\t%s\n\t%s\n\t%s\n\t%s" %(pix10, pix20, pix60resamp, pix_merged)
+        print "Pix conversion completed for %s_%s:" %(mission,date)
+        print "Wrote files to:\n\t%s\n\t%s\n\t%s\n\t%s" %(pix10, pix20, pix60resamp, pix_merged)
     
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -229,7 +233,7 @@ def readtopix(indir):
 # ------------------------------------------------------------------------------------------------------------------- #
 
 def make_pca(merged_input,pca_out,identifier):
-    print "\tStarting Principal Component Analysis for file %s" %identifier 
+    print "Starting Principal Component Analysis for file %s" %identifier
     pca_rep = os.path.join(pcadir, "PCA_"+ identifier + "_report.txt")
     fexport(fili=merged_input,
             filo=pca_out,
@@ -252,9 +256,63 @@ def make_pca(merged_input,pca_out,identifier):
     finally:
         enableDefaultReport('term')             # Close the report file
     
-    print "\tPCA for %s completed." %identifier
-              
-    
+    print "PCA for %s completed." %identifier
+
+
+# ------------------------------------------------------------------------------------------------------------------- #
+# Define mask_clouds() function                                             - Note 20190430 this is untested
+#   1. Apply unsupervised classification to SWIR Cirrus image band.
+#   2. Export classification to polygon format.
+#   3. Select cloud polygons.
+#   4. Export cloud polygons to scratch tif.
+#   5. Convert scratch tif to bitmap layer.
+# Parameters:
+#   pix60in     - The input atmospheric band file with the SWIR cirrus band in channel three.
+#   bitmapout   - The output file for the bitmap layer.
+#   identifier  - Unique identifier string read from input file name.
+# ------------------------------------------------------------------------------------------------------------------- #
+
+def mask_clouds(pix60in, bitmapout, identifier):
+    polygonout_name = identifier + "_cloud_polygons.shp"
+    polygonout = os.path.join(maskdir,polygonout_name)
+    rasterout_name = identifier + "_cloud_raster.tif"
+    rasterout = os.path.join(maskdir,rasterout_name)
+    id_string = "Cloud mask bitmap for file %s" %identifier
+    pcimod(file=pix60in,                                            # Input 60m resolution atmospheric bands pix file
+           pciop='ADD',                                             # Modification mode "Add"
+           pcival=[0, 1, 0, 0])                                     # Task - add one 16U channels
+    kclus(file=pix60in,                                             # Run classification atmospheric bands
+          dbic=[3],                                                 # Use Layer 3 (SWIR Cirrus)
+          dboc=[4],                                                 # Output to blank layer
+          numclus=[2],                                              # Two clusters - clouds, not clouds
+          seedfile='',
+          maxiter=[20],
+          movethrs=[],
+          siggen="YES",
+          backval=[],
+          nsam=[])
+    ras2poly(fili=pix60in,                                          # Use scratch PIX file
+             dbic=[4],                                              # Use classification channel
+             filo=polygonout,                                       # Polygon SHP output location
+             smoothv="YES",                                         # Smooth boundaries
+             dbsd=id_string,                                        # Layer description string
+             ftype="SHP",                                           # Shapefile format
+             foptions="")
+    workspace = os.path.join(workingdir, "sable.gdb")               # Define GDB workspace
+    polygonout_lyr = identifier + "_polygon_lyr"                    # Define feature layer name for polygon output
+    arcpy.env.workspace = workspace                                 # Set default workspace
+    arcpy.MakeFeatureLayer_management(polygonout, polygonout_lyr)   # Make polygon feature layer
+    arcpy.SelectLayerByAttribute_management(polygonout_lyr, 'NEW_SELECTION', '"Area" < 1000000000')
+    arcpy.PolygonToRaster_conversion(polygonout_lyr,"FID",rasterout,"MAXIMUM_AREA",1)
+    ras2bit(fili=rasterout,                                         # Scratch tif file
+            dbic=[1],                                               # Data channel
+            filo=bitmapout,                                         # Output PIX file
+            dbsd=id_string,                                         # Layer description
+            ftype="PIX")
+
+    return bitmapout
+
+
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define enhance_pca() function
 #   1. Generate a linear stretch LUT for the PCA result.
@@ -264,7 +322,7 @@ def make_pca(merged_input,pca_out,identifier):
 #   pcaout  - The output file for the enhanced PCA composite.
 # ------------------------------------------------------------------------------------------------------------------- #
 def enhance_pca(pcain, pcaout, identifier):
-    print "\tGenerating look-up tables for file %s" %identifier
+    print "Generating look-up tables for file %s" %identifier
     stretch(file=pcain,
             dbic=[14],              # Stretch band 14
             dblut=[],
@@ -283,15 +341,15 @@ def enhance_pca(pcain, pcaout, identifier):
             dbsn="LinLUT",
             dbsd="Linear Stretch",
             expo=[1])               # Linear stretch
-    print "\tLUT generation complete."
-    print "\tApplying LUT enhancement..."
+    print "LUT generation complete."
+    print "Applying LUT enhancement..."
     lut(fili=pcain,
         dbic=[11, 12, 13],          # Use bands (14,15,16)
         dblut=[2, 3, 4],            # LUT segments
         filo=pcaout,                # Output mosaic
         datatype="16U",             # 16-bit unsigned
         ftype="TIF")                # Tif output
-    print "\tPCA enhancement for %s complete." %identifier
+    print "PCA enhancement for %s complete." %identifier
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -312,7 +370,7 @@ def enhance_pca(pcain, pcaout, identifier):
 # ------------------------------------------------------------------------------------------------------------------- #
 
 def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
-    print "\tGenerating coastline classification..."
+    print "Generating coastline classification..."
     id_string="Coastline from file %s." % identifier
     fexport(fili=pixin,                                             # Input with PCA
             filo=coastscr,                                          # Output scratch file
@@ -366,6 +424,7 @@ def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
     # Smooth line features to fix zig-zag from raster cells
     arcpy.cartography.SmoothLine(lineout,lineout_smooth,"PAEK",50,"")
 
+    os.remove(coastscr)
     return lineout_smooth
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -379,16 +438,16 @@ def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
 
 def prep_workspace(indir,folder_list):
     if os.path.isdir(indir) == False:
-        print "\tMissing input folder!"
-        print "\tAdd unzipped input files to input folder"
+        print "Missing input folder!"
+        print "Add unzipped input files to input folder"
     for i in range(len(folder_list)):
           if os.path.isdir(folder_list[i]) == True:
-              print "\tClearing %s" % folder_list[i]
+              print "Clearing %s" % folder_list[i]
               shutil.rmtree(folder_list[i])
               os.mkdir(folder_list[i])
           else:
               os.mkdir(folder_list[i])
-              print "\tCreated %s" % folder_list[i]
+              print "Created %s" % folder_list[i]
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -435,11 +494,11 @@ main()
 # print "Sentinel-2 Mosaicking Script"
 # print "="*50
 
-# print "\tThis script should be run from %s" %workingdir
-# print "\tUnzip Sentinel-2 input to %s" %indir
-# print "\tRunning this script will DELETE existing data"
-# print "\tfrom corrected, mosaic, and pix folders!"
-# start = raw_input("\tContinue? (Y/N):")
+# print "This script should be run from %s" %workingdir
+# print "Unzip Sentinel-2 input to %s" %indir
+# print "Running this script will DELETE existing data"
+# print "from corrected, mosaic, and pix folders!"
+# start = raw_input("Continue? (Y/N):")
 # while start[0].upper() <> "N":                  # Start a loop
 #    if len(start) == 0:                         # Stop if no answer
 #        start = "N"                             # Exit script
