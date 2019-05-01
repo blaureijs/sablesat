@@ -39,6 +39,8 @@ global pixfiles10                                   # Initialize list of convert
 pixfiles10 = []
 global pixfiles_m                                   # Initialize list of full band pix
 pixfiles_m = []
+global pixfiles60
+pixfiles60 = []
 global workspace_list                               # Workspace directory list
 workspace_list = []                                 # for iterative folder preparation
 
@@ -139,6 +141,7 @@ def readtopix(indir):
         pix_merged = "pix/" + mission + "_" + date + "_10m_merged.pix"
         pixfiles_m.append(pix_merged)
         pix60 = "pix/" + mission + "_" + date + "_atmospheric_60m.pix"
+        pixfiles60.append(pix60)
         pix60resamp = "pix/" + mission + "_" + date + "_atmospheric_60m_resamp_10m.pix"
 
         print "Starting pix conversion file %s_%s." %(mission,date)
@@ -188,10 +191,13 @@ def readtopix(indir):
         # to 10m resolution. Avoids data loss due to resampling of 10m to 20.
         mergefile_name = mission + "_" + date + "_merge.txt"
         mergefile_path = os.path.join(mergedir,mergefile_name)
-        
+
+        path10 = os.path.join(workingdir,pix10)
+        path20 = os.path.join(workingdir,pix20)
+
         mergefile = open(mergefile_path, "w")
-        mergefile.write('"' + workingdir + str(pix10) + '"' + "\n")
-        mergefile.write('"' + workingdir + str(pix20) + '"')
+        mergefile.write('"' + path10 + '"' + "\n")
+        mergefile.write('"' + path20 + '"')
         mergefile.close()
 
         datamerge(mfile=mergefile_path,         # Merge 10m bands and 20m bands into one pix file
@@ -277,10 +283,11 @@ def mask_clouds(pix60in, bitmapout, identifier):
     polygonout = os.path.join(maskdir,polygonout_name)
     rasterout_name = identifier + "_cloud_raster.tif"
     rasterout = os.path.join(maskdir,rasterout_name)
-    id_string = "Cloud mask bitmap for file %s" %identifier
+    id_string = "Cloud mask bitmap for file %s" % identifier
     pcimod(file=pix60in,                                            # Input 60m resolution atmospheric bands pix file
            pciop='ADD',                                             # Modification mode "Add"
            pcival=[0, 1, 0, 0])                                     # Task - add one 16U channels
+    print "Classifying clouds from SWIR Cirrus band in file %s..." % identifier
     kclus(file=pix60in,                                             # Run classification atmospheric bands
           dbic=[3],                                                 # Use Layer 3 (SWIR Cirrus)
           dboc=[4],                                                 # Output to blank layer
@@ -291,6 +298,8 @@ def mask_clouds(pix60in, bitmapout, identifier):
           siggen="YES",
           backval=[],
           nsam=[])
+    print "Cloud classification complete."
+    print "Converting to polygon shapefile..."
     ras2poly(fili=pix60in,                                          # Use scratch PIX file
              dbic=[4],                                              # Use classification channel
              filo=polygonout,                                       # Polygon SHP output location
@@ -298,6 +307,8 @@ def mask_clouds(pix60in, bitmapout, identifier):
              dbsd=id_string,                                        # Layer description string
              ftype="SHP",                                           # Shapefile format
              foptions="")
+    print "Shapefile conversion complete."
+    print "Converting polygons to bitmap layer..."
     workspace = os.path.join(workingdir, "sable.gdb")               # Define GDB workspace
     polygonout_lyr = identifier + "_polygon_lyr"                    # Define feature layer name for polygon output
     arcpy.env.workspace = workspace                                 # Set default workspace
@@ -309,7 +320,7 @@ def mask_clouds(pix60in, bitmapout, identifier):
             filo=bitmapout,                                         # Output PIX file
             dbsd=id_string,                                         # Layer description
             ftype="PIX")
-
+    print "Bitmap conversion complete. Output to \n\t%s" % bitmapout
     return bitmapout
 
 
@@ -442,12 +453,12 @@ def prep_workspace(indir,folder_list):
         print "Add unzipped input files to input folder"
     for i in range(len(folder_list)):
           if os.path.isdir(folder_list[i]) == True:
-              print "Clearing %s" % folder_list[i]
+              print "Clearing \t%s" % folder_list[i]
               shutil.rmtree(folder_list[i])
               os.mkdir(folder_list[i])
           else:
               os.mkdir(folder_list[i])
-              print "Created %s" % folder_list[i]
+              print "Created \t%s" % folder_list[i]
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -461,7 +472,17 @@ def main():
     prep_workspace(indir, workspace_list)   # Prepare workspace
     
     readtopix(indir)                        # Convert raw input to pix
-    
+
+    for i in range(len(pixfiles60)):
+        id_fields = pixfiles60[i].split("_")
+        mission = (id_fields[0])[4:]
+        date = id_fields[1]
+        id = mission + "_" + date
+
+        cloud_bitmap = os.path.join(maskdir,id + "_clouds.pix")
+
+        mask_clouds(pixfiles60[i], cloud_bitmap, id)
+
     for i in range(len(pixfiles_m)):
         id_fields = pixfiles_m[i].split("_")
         mission = (id_fields[0])[4:]
@@ -477,8 +498,8 @@ def main():
         pca_image = os.path.join(pcadir,id + "_pca.pix")
 
         # correction(pixfiles_m[i], hzrm_merge, atcor_merge)
-        make_pca(pixfiles_m[i], pca_image, id)
-        coastline(pca_image, coastscratch, coastpoly, coastshp, coastsmooth, id)
+        # make_pca(pixfiles_m[i], pca_image, id)
+        # coastline(pca_image, coastscratch, coastpoly, coastshp, coastsmooth, id)
 
 
 
