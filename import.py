@@ -28,7 +28,7 @@ from pci.hazerem import *                           # Haze removal
 from pci.atcor import *                             # Atmospheric correction
 from pci.kclus import *                             # Unsupervised K-Means classifier
 from pci.ras2poly import *                          # Raster to Polygon conversion
-from pci.ras2bit import *                           # Raster to Bitmap conversion
+from pci.poly2bit import *                           # Polygon to Bitmap conversion
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
@@ -279,14 +279,14 @@ def make_pca(merged_input,pca_out,identifier):
 # ------------------------------------------------------------------------------------------------------------------- #
 
 def mask_clouds(pix60in, bitmapout, identifier):
+    polygonout_name_full = identifier + "_cloud_polygons_full.shp"
+    polygonout_full = os.path.join(maskdir,polygonout_name_full)
     polygonout_name = identifier + "_cloud_polygons.shp"
     polygonout = os.path.join(maskdir,polygonout_name)
-    rasterout_name = identifier + "_cloud_raster.tif"
-    rasterout = os.path.join(maskdir,rasterout_name)
     id_string = "Cloud mask bitmap for file %s" % identifier
     pcimod(file=pix60in,                                            # Input 60m resolution atmospheric bands pix file
            pciop='ADD',                                             # Modification mode "Add"
-           pcival=[0, 1, 0, 0])                                     # Task - add one 16U channels
+           pcival=[0, 0, 1, 0])                                     # Task - add one 16U channels
     print "Classifying clouds from SWIR Cirrus band in file %s..." % identifier
     kclus(file=pix60in,                                             # Run classification atmospheric bands
           dbic=[3],                                                 # Use Layer 3 (SWIR Cirrus)
@@ -300,26 +300,33 @@ def mask_clouds(pix60in, bitmapout, identifier):
           nsam=[])
     print "Cloud classification complete."
     print "Converting to polygon shapefile..."
-    ras2poly(fili=pix60in,                                          # Use scratch PIX file
-             dbic=[4],                                              # Use classification channel
-             filo=polygonout,                                       # Polygon SHP output location
-             smoothv="YES",                                         # Smooth boundaries
-             dbsd=id_string,                                        # Layer description string
-             ftype="SHP",                                           # Shapefile format
+    ras2poly(fili=pix60in,                                              # Use scratch PIX file
+             dbic=[4],                                                  # Use classification channel
+             filo=polygonout_full,                                      # Polygon SHP output location
+             smoothv="YES",                                             # Smooth boundaries
+             dbsd=id_string,                                            # Layer description string
+             ftype="SHP",                                               # Shapefile format
              foptions="")
     print "Shapefile conversion complete."
     print "Converting polygons to bitmap layer..."
-    workspace = os.path.join(workingdir, "sable.gdb")               # Define GDB workspace
-    polygonout_lyr = identifier + "_polygon_lyr"                    # Define feature layer name for polygon output
-    arcpy.env.workspace = workspace                                 # Set default workspace
-    arcpy.MakeFeatureLayer_management(polygonout, polygonout_lyr)   # Make polygon feature layer
-    arcpy.SelectLayerByAttribute_management(polygonout_lyr, 'NEW_SELECTION', '"Area" < 1000000000')
-    arcpy.PolygonToRaster_conversion(polygonout_lyr,"FID",rasterout,"MAXIMUM_AREA",1)
-    ras2bit(fili=rasterout,                                         # Scratch tif file
-            dbic=[1],                                               # Data channel
-            filo=bitmapout,                                         # Output PIX file
-            dbsd=id_string,                                         # Layer description
-            ftype="PIX")
+    workspace = os.path.join(workingdir, "sable.gdb")                   # Define GDB workspace
+    polygonoutf_lyr = identifier + "_polygon_lyr"                       # Define feature layer name for polygon output
+    arcpy.env.workspace = workspace                                     # Set default workspace
+    arcpy.MakeFeatureLayer_management(polygonout_full, polygonoutf_lyr) # Make polygon feature layer
+
+    arcpy.FeatureClassToFeatureClass_conversion(in_features=polygonoutf_lyr,        # Extract only cloud polygons
+                                                out_path=maskdir,                   # Output location
+                                                out_name=polygonout_name,           # Output filename
+                                                where_clause='"Area" < 1000000000') # Anything <1B SM not clouds
+    poly2bit(fili=polygonout,                                           # Convert polygons to bitmap layer
+             dbvs=[1],                                                  # Input vector layer
+             filo=bitmapout,                                            # Output file
+             dbsd=id_string,                                            # Layer description
+             pixres=[10,10],                                            # 10m resolution
+             ftype="PIX")                                               # Pix format
+
+    os.remove(polygonout_full)                                          # Clean up intermediate polygon file
+
     print "Bitmap conversion complete. Output to \n\t%s" % bitmapout
     return bitmapout
 
