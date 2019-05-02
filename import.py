@@ -1,9 +1,9 @@
 # =================================================================================================================== #
-# Script Name:	data_prep.py
+# Script Name:	import.py
 # Author:	    Brian Laureijs
-# Purpose:      Convert and run functions on Sentinel-2 imagery for Sable
-# Date:         20190429
-# Version:      0.1.0
+# Purpose:      Convert Sable Island Sentinel-2 imagery to PIX format for further processing.
+# Date:         20190502
+# Version:      0.2.0
 # Notice:       Created for academic assessment. Do not re-use or
 #               redistribute without permission from author.
 # =================================================================================================================== #
@@ -69,47 +69,6 @@ workspace_list.append(coastdir)
 maskdir = os.path.join(workingdir, "masks")         # Cloud mask output
 workspace_list.append(maskdir)
 
-     
-# ------------------------------------------------------------------------------------------------------------------- #
-# Define correction() function:
-#   1. Process masks for raw pix image.
-#   2. Process haze removal for pix image.
-#   3. Process atmospheric correction for pix image.
-# Parameters:
-#   piximage    - The input pix format image.
-#   hazeout     - The output haze corrected image.
-#   atcorout    - The output atmospherically corrected image.
-# ------------------------------------------------------------------------------------------------------------------- #
-def correction(piximage, hazeout, atcorout):
-    print "-" * 50
-    print "Processing masks..."
-    masking(fili=piximage,                          # Input pix
-            asensor=sen2,                           # Sentinel-2
-            visirchn=[1, 3, 4],                     # B, R, NIR channels
-            hazecov=[25],                           # Haze coverage
-            clthresh=[-1, -1, -1],                  # Default cloud reflectance threshold
-            filo=piximage)                          # Output (same file)
-    print "Masks for %s completed" % piximage
-    print "Processing haze removal... (This may take a while)"
-    hazerem(fili=piximage,                          # Input pix
-            asensor=sen2,                           # Sentinel-2
-            visirchn=[1, 3, 4],                     # B, R, NIR channels
-            chanopt="p,p,p,c,p,p,p,c,c,c,",    # Process or copy? (channels 1-13)
-            maskfili=piximage,                      # Masks in same file
-            maskseg=[2, 3, 4],                      # Haze, Cloud, Water mask channels
-            hazecov=[50],                           # Haze coverage default 50
-            filo=hazeout)                           # Output pix
-    print "Haze removed from %s." % piximage
-    print "Processing atmospheric correction..."
-    atcor(fili=hazeout,                             # Haze corrected input
-          asensor=sen2,                             # Sentinel-2
-          maskfili=piximage,                        # Mask file
-          atmdef="Maritime",                        # Atmosphere type
-          atmcond="summer",                         # Atmosphere conditions
-          outunits="16bit_Reflectance",             # Output
-          filo=atcorout)                            # Corrected pix
-    print "%s atmospheric correction completed." % piximage
-
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define readtopix() function
@@ -135,14 +94,13 @@ def readtopix(indir):
         pix20full = "pix/" + mission + "_" + date + "_20m_full.pix"
         pix60full = "pix/" + mission + "_" + date + "_60m_full.pix"
         
-        pix10 = "pix/" + mission + "_" + date + "_10m.pix"
+        pix10 = "pix/" + mission + "_" + date + "_10m_unmerged.pix"
         pixfiles10.append(pix10)
-        pix20 = "pix/" + mission + "_" + date + "_20m.pix"
+        pix20 = "pix/" + mission + "_" + date + "_20m_unmerged.pix"
         pix_merged = "pix/" + mission + "_" + date + "_10m_merged.pix"
         pixfiles_m.append(pix_merged)
-        pix60 = "pix/" + mission + "_" + date + "_atmospheric_60m.pix"
+        pix60 = "pix/" + mission + "_" + date + "_60m_atmospheric.pix"
         pixfiles60.append(pix60)
-        pix60resamp = "pix/" + mission + "_" + date + "_atmospheric_60m_resamp_10m.pix"
 
         print "Starting pix conversion file %s_%s." %(mission,date)
         fimport(fili_10, pix10full)         # Import R,G,B,NIR bands
@@ -221,229 +179,7 @@ def readtopix(indir):
 
         print "Pix conversion completed for %s_%s:" %(mission,date)
         print "Wrote files to:\n\t%s\n\t%s\n\t%s\n\t%s" %(pix10, pix20, pix60resamp, pix_merged)
-    
 
-# ------------------------------------------------------------------------------------------------------------------- #
-# Define make_pca() function:                    -- RUN ON RAW DATA ONLY
-#   1. Generate a linear stretch LUT for mosaicked pix
-#   2. Apply LUT enhancement to pix mosaic
-# Parameters:
-#   merged_input    - The merged input PIX format file with all bands.
-#   identifier      - A unique naming identifier for report output.
-# Note:
-#   Some tweaks here to ensure that the PCA stats report is output to
-#   the project workspace, instead of the default folder on the C:\ Drive.
-#   The code for this section was adapted from sample at
-#   https://support.pcigeomatics.com/hc/en-us/community/posts/
-#   203566673-Write-report-to-file-in-python (Shawn Melamed, 2015)
-# ------------------------------------------------------------------------------------------------------------------- #
-
-def make_pca(merged_input,pca_out,identifier):
-    print "Starting Principal Component Analysis for file %s" %identifier
-    pca_rep = os.path.join(pcadir, "PCA_"+ identifier + "_report.txt")
-    fexport(fili=merged_input,
-            filo=pca_out,
-            dbic=[1,2,3,4,5,6,7,8,9,10],
-            ftype="PIX")
-    try:
-        Report.clear()                          # Clear report file
-        enableDefaultReport(pca_rep)            # Change output folder location
-
-        pcimod(file=pca_out,
-                pciop="ADD",
-                pcival=[0,0,3])                 # Add 3 16 bit unsigned channels
-        pca(file=pca_out,
-            dbic=[1,2,3,4,5,6,7,8,9,10],        # Use first ten bands
-            eign=[1,2,3],                       # Output first three eigenchannels
-            dboc=[11,12,13],                    # Output to 3 new channels
-            rtype="LONG")                       # Output extended report format
-    except PCIException, e:
-        print e
-    finally:
-        enableDefaultReport('term')             # Close the report file
-    
-    print "PCA for %s completed." %identifier
-
-
-# ------------------------------------------------------------------------------------------------------------------- #
-# Define mask_clouds() function                                             - Note 20190430 this is untested
-#   1. Apply unsupervised classification to SWIR Cirrus image band.
-#   2. Export classification to polygon format.
-#   3. Select cloud polygons.
-#   4. Export cloud polygons to scratch tif.
-#   5. Convert scratch tif to bitmap layer.
-# Parameters:
-#   pix60in     - The input atmospheric band file with the SWIR cirrus band in channel three.
-#   bitmapout   - The output file for the bitmap layer.
-#   identifier  - Unique identifier string read from input file name.
-# ------------------------------------------------------------------------------------------------------------------- #
-
-def mask_clouds(pix60in, bitmapout, identifier):
-    polygonout_name_full = identifier + "_cloud_polygons_full.shp"
-    polygonout_full = os.path.join(maskdir,polygonout_name_full)
-    polygonout_name = identifier + "_cloud_polygons.shp"
-    polygonout = os.path.join(maskdir,polygonout_name)
-    id_string = "Cloud mask bitmap for file %s" % identifier
-    pcimod(file=pix60in,                                            # Input 60m resolution atmospheric bands pix file
-           pciop='ADD',                                             # Modification mode "Add"
-           pcival=[0, 0, 1, 0])                                     # Task - add one 16U channels
-    print "Classifying clouds from SWIR Cirrus band in file %s..." % identifier
-    kclus(file=pix60in,                                             # Run classification atmospheric bands
-          dbic=[3],                                                 # Use Layer 3 (SWIR Cirrus)
-          dboc=[4],                                                 # Output to blank layer
-          numclus=[2],                                              # Two clusters - clouds, not clouds
-          seedfile='',
-          maxiter=[20],
-          movethrs=[],
-          siggen="YES",
-          backval=[],
-          nsam=[])
-    print "Cloud classification complete."
-    print "Converting to polygon shapefile..."
-    ras2poly(fili=pix60in,                                              # Use scratch PIX file
-             dbic=[4],                                                  # Use classification channel
-             filo=polygonout_full,                                      # Polygon SHP output location
-             smoothv="YES",                                             # Smooth boundaries
-             dbsd=id_string,                                            # Layer description string
-             ftype="SHP",                                               # Shapefile format
-             foptions="")
-    print "Shapefile conversion complete."
-    print "Converting polygons to bitmap layer..."
-    workspace = os.path.join(workingdir, "sable.gdb")                   # Define GDB workspace
-    polygonoutf_lyr = identifier + "_polygon_lyr"                       # Define feature layer name for polygon output
-    arcpy.env.workspace = workspace                                     # Set default workspace
-    arcpy.MakeFeatureLayer_management(polygonout_full, polygonoutf_lyr) # Make polygon feature layer
-
-    arcpy.FeatureClassToFeatureClass_conversion(in_features=polygonoutf_lyr,        # Extract only cloud polygons
-                                                out_path=maskdir,                   # Output location
-                                                out_name=polygonout_name,           # Output filename
-                                                where_clause='"Area" < 1000000000') # Anything <1B SM not clouds
-    poly2bit(fili=polygonout,                                           # Convert polygons to bitmap layer
-             dbvs=[1],                                                  # Input vector layer
-             filo=bitmapout,                                            # Output file
-             dbsd=id_string,                                            # Layer description
-             pixres=[10,10],                                            # 10m resolution
-             ftype="PIX")                                               # Pix format
-
-    os.remove(polygonout_full)                                          # Clean up intermediate polygon file
-
-    print "Bitmap conversion complete. Output to \n\t%s" % bitmapout
-    return bitmapout
-
-
-# ------------------------------------------------------------------------------------------------------------------- #
-# Define enhance_pca() function
-#   1. Generate a linear stretch LUT for the PCA result.
-#   2. Apply LUT enhancement to PCA and output to new file.
-# Parameters:
-#   pcain   - The input PIX format file that make_pca() was run on.
-#   pcaout  - The output file for the enhanced PCA composite.
-# ------------------------------------------------------------------------------------------------------------------- #
-def enhance_pca(pcain, pcaout, identifier):
-    print "Generating look-up tables for file %s" %identifier
-    stretch(file=pcain,
-            dbic=[14],              # Stretch band 14
-            dblut=[],
-            dbsn="LinLUT",
-            dbsd="Linear Stretch",
-            expo=[1])               # Linear stretch
-    stretch(file=pcain,
-            dbic=[15],              # Stretch band 15
-            dblut=[],
-            dbsn="LinLUT",
-            dbsd="Linear Stretch",
-            expo=[1])               # Linear stretch
-    stretch(file=pcain,
-            dbic=[16],              # Stretch band 16
-            dblut=[],
-            dbsn="LinLUT",
-            dbsd="Linear Stretch",
-            expo=[1])               # Linear stretch
-    print "LUT generation complete."
-    print "Applying LUT enhancement..."
-    lut(fili=pcain,
-        dbic=[11, 12, 13],          # Use bands (14,15,16)
-        dblut=[2, 3, 4],            # LUT segments
-        filo=pcaout,                # Output mosaic
-        datatype="16U",             # 16-bit unsigned
-        ftype="TIF")                # Tif output
-    print "PCA enhancement for %s complete." %identifier
-
-
-# ------------------------------------------------------------------------------------------------------------------- #
-# Define coastline() function:                                              -- Must be run AFTER make_pca() completes
-#   1. Export PCA layers to scratch pix file.
-#   2. Add layer for classification result
-#   3. Run unsupervised k-means clustering algorithm and output to new layer
-#   4. Export classification raster to polygon shapefile
-#   5. Select Sable Island polygon(s) that contain selection points (selection_polygons.shp)
-#   6. Convert to polyline format and smooth line to remove zig-zag from raster cells.
-# Parameters:
-#   pixin           - The input PIX format file with PCA output layers.
-#   coastscr        - The output scratch pix file location for the classification layer.
-#   polygonout      - The output polygon format vector file.
-#   lineout         - The output polyline format vector file.
-#   lineout_smooth  - The output polylines with a line smoothing algorithm applied.
-#   identifier      - Unique identifier string read from input file name.
-# ------------------------------------------------------------------------------------------------------------------- #
-
-def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
-    print "Generating coastline classification..."
-    id_string="Coastline from file %s." % identifier
-    fexport(fili=pixin,                                             # Input with PCA
-            filo=coastscr,                                          # Output scratch file
-            dbiw=[],
-            dbic=[11, 12, 13],                                      # PCA channels
-            dbib=[],
-            dbvs=[],
-            dblut=[],
-            dbpct=[],
-            ftype="PIX",                                            # PIX filetype
-            foptions="")
-    pcimod(file=coastscr,                                           # Output scratch PIX file
-           pciop='ADD',                                             # Modification mode "Add"
-           pcival=[0, 2, 0, 0])                                     # Task - add two 16U channels
-    kclus(file=coastscr,                                            # Run classification on scratch file
-          dbic=[1, 2, 3],                                           # Use three PCA layers
-          dboc=[4],                                                 # Output to blank layer
-          numclus=[2],                                              # Two clusters - land, ocean
-          seedfile='',
-          maxiter=[20],
-          movethrs=[],
-          siggen="YES",
-          backval=[],
-          nsam=[])
-    ras2poly(fili=coastscr,                                         # Use scratch PIX file
-             dbic=[4],                                              # Use classification channel
-             filo=polygonout,                                       # Polygon SHP output location
-             smoothv="YES",                                         # Smooth boundaries
-             dbsd=id_string,                                        # Layer description string
-             ftype="SHP",                                           # Shapefile format
-             foptions="")
-    selpoints = os.path.join(workingdir,"selection_points","selection_polygons.shp")
-    workspace = os.path.join(workingdir,"sable.gdb")                # Define GDB workspace
-    polygonout_lyr = identifier + "_polygon_lyr"                    # Define feature layer name for polygon output
-    arcpy.env.workspace = workspace                                 # Set default workspace
-    arcpy.MakeFeatureLayer_management(polygonout,polygonout_lyr)    # Make polygon feature layer
-
-    # Select island polygons that contain selection circle polygons (small, basically points).
-    # These points are placed where the island is likely to exist.
-    # Remove selection of features larger than 1B sq. m - this feature most likely represents ocean.
-    try:                                                    # Does feature layer 'selpoints_lyr' exist yet?
-        arcpy.SelectLayerByLocation_management(polygonout_lyr,'CONTAINS','selpoints_lyr','','NEW_SELECTION')
-    except:                                                 # Didn't work, so create 'selpoints_lyr' first
-        arcpy.MakeFeatureLayer_management(selpoints, 'selpoints_lyr')
-        arcpy.SelectLayerByLocation_management(polygonout_lyr, 'CONTAINS', 'selpoints_lyr', '', 'NEW_SELECTION')
-    arcpy.SelectLayerByAttribute_management(polygonout_lyr,'REMOVE_FROM_SELECTION','"Area" > 1000000000')
-
-    # Convert polygon features to polyline
-    arcpy.PolygonToLine_management(polygonout_lyr,lineout,'IDENTIFY_NEIGHBORS')
-
-    # Smooth line features to fix zig-zag from raster cells
-    arcpy.cartography.SmoothLine(lineout,lineout_smooth,"PAEK",50,"")
-
-    os.remove(coastscr)
-    return lineout_smooth
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define prep_workspace() function
@@ -518,26 +254,22 @@ main()
 #     deletion at beginning of script.
 # ------------------------------------------------------------------------------------------------------------------- #
 
-# print "="*50                                    # Header
-# print "Sentinel-2 Mosaicking Script"
-# print "="*50
+print "="*50                                    # Header
+print "Sentinel-2 File Processing Script"
+print "="*50
 
-# print "This script should be run from %s" %workingdir
-# print "Unzip Sentinel-2 input to %s" %indir
-# print "Running this script will DELETE existing data"
-# print "from corrected, mosaic, and pix folders!"
-# start = raw_input("Continue? (Y/N):")
-# while start[0].upper() <> "N":                  # Start a loop
-#    if len(start) == 0:                         # Stop if no answer
-#        start = "N"                             # Exit script
-#        print " ----- Goodbye"*2, "-----"
-#    elif start[0].upper() == "Y":               # Start if starts with y
-#        main()                                  # Run main()
-#    else:
-#        start = "N"                             # Kill loop
-#        print " ----- Goodbye"*2, "-----"       # Exit script
-
-##for i in range(len(pixfiles10)):
-##    hzrm10out = pixfiles10[i][:19] + "_hzrm.pix"
-##    atcor10out = pixfiles10[i][:19] + "_atcor.pix"
-##    correction(pixfiles20[i], hzrm10out, atcor10out)
+print "Current working directory is %s" % workingdir
+print "Converted PIX directory is %s" % pixdir
+print "Running this script will DELETE existing data from output folders!"
+start = "Y"
+while start[0].upper() != "N":                  # Start a loop
+    start = raw_input("Continue? (Y/N):")
+    if len(start) == 0:                         # Stop if no answer
+        start = "N"                             # Exit script
+        print " ----- Goodbye"*2, "-----"
+    elif start[0].upper() == "Y":               # Start if starts with y
+        main()                                  # Run main()
+        start = "N"
+    else:
+        start = "N"                             # Kill loop
+        print " ----- Goodbye"*2, "-----"       # Exit script
