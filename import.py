@@ -164,8 +164,15 @@ def prep_workspace(inputdir,folder_list):
     for i in range(len(folder_list)):
         if os.path.isdir(folder_list[i]):
             print "Clearing \t%s" % folder_list[i]
-            shutil.rmtree(folder_list[i])
-            os.mkdir(folder_list[i])
+            done = False
+            while not done:
+                try:
+                    shutil.rmtree(folder_list[i])
+                    os.mkdir(folder_list[i])
+                    done = True
+                except:
+                    print "Folder access denied, trying again..."
+                    done = False
         else:
             os.mkdir(folder_list[i])
             print "Created \t%s" % folder_list[i]
