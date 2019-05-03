@@ -57,7 +57,19 @@ def readtopix(inputdir):
         mission = name_fields[0]
         date = (name_fields[2])[:8]
 
-        pix10full = "pix/" + mission + "_" + date + "_10m_full.pix" # Set up paths for functions
+        if name_fields[1] == "OPER":                                # Long-format naming scheme from 2015-2016
+            date = (name_fields[5])[:8]
+            findpath = os.path.join(indir, infiles[i])
+            find_xml = os.listdir(findpath)
+            for j in range(len(find_xml)):
+                if find_xml[j][-3:] == "xml" and find_xml[j] != "INSPIRE.xml":
+                    xml_name = find_xml[j]
+
+            fili_10 = "input/" + infiles[i] + "/" + xml_name + "?r=%3ABand+Resolution%3A10M"
+            fili_20 = "input/" + infiles[i] + "/" + xml_name + "?r=%3ABand+Resolution%3A20M"
+            fili_60 = "input/" + infiles[i] + "/" + xml_name + "?r=%3ABand+Resolution%3A60M"
+
+        pix10full = "pix/" + mission + "_" + date + "_10m_full.pix"  # Set up paths for functions
         pix20full = "pix/" + mission + "_" + date + "_20m_full.pix"
         pix60full = "pix/" + mission + "_" + date + "_60m_full.pix"
         pix10 = "pix/" + mission + "_" + date + "_10m_unmerged.pix"
@@ -66,7 +78,7 @@ def readtopix(inputdir):
         pix60 = "pix/" + mission + "_" + date + "_60m_atmospheric.pix"
 
         start_time = time.time()
-        print "Starting pix conversion file %s_%s." %(mission,date)
+        print "Starting pix conversion file %s_%s." % (mission,date)
         fimport(fili_10, pix10full)         # Import R,G,B,NIR bands
         fimport(fili_20, pix20full)         # Import RE,NIR,SWIR bands
         fimport(fili_60, pix60full)         # Import Coastal, Vapour, Cirrus
