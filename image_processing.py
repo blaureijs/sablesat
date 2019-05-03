@@ -369,32 +369,33 @@ def main():
             pm_add = os.path.join(pixdir, pixlist[i])
             pixfiles_m.append(pm_add)
 
-    for i in range(len(pixfiles60)):
-        id_fields = pixfiles60[i].split("_")
+#    for i in range(len(pixfiles60)):
+#        id_fields = pixfiles60[i].split("_")
+#        mission = (id_fields[0])[-3:]
+#        date = id_fields[1]
+#        iid = mission + "_" + date
+
+#        cloud_bitmap = os.path.join(maskdir, iid + "_clouds.pix")
+#        mask_clouds(pixfiles60[i], cloud_bitmap, iid)
+
+    for i in range(len(pixfiles_m)):
+        id_fields = pixfiles_m[i].split("_")
         mission = (id_fields[0])[-3:]
         date = id_fields[1]
         iid = mission + "_" + date
 
-        cloud_bitmap = os.path.join(maskdir, iid + "_clouds.pix")
-        mask_clouds(pixfiles60[i], cloud_bitmap, iid)
+        hzrm_merge = os.path.join(pixdir, iid + "_hzrm.pix")
+        atcor_merge = os.path.join(corrdir, iid + "_atcor.pix")
+        coastshp = os.path.join(coastdir, iid + "_coastline.shp")
+        coastpoly = os.path.join(coastdir, iid + "_coastline_polygons.shp")
+        coastsmooth = os.path.join(coastdir, iid + "_coastline_smoothed.shp")
+        coastscratch = os.path.join(coastdir, iid + "_coastline.pix")
+        pca_image = os.path.join(pcadir, iid + "_pca.pix")
 
-#    for i in range(len(pixfiles_m)):
-#        id_fields = pixfiles_m[i].split("_")
-#        mission = (id_fields[0])[4:]
-#        date = id_fields[1]
-#        iid = mission + "_" + date
-#
-#        hzrm_merge = os.path.join(pixdir, iid + "_hzrm.pix")
-#        atcor_merge = os.path.join(corrdir, iid + "_atcor.pix")
-#        coastshp = os.path.join(coastdir, iid + "_coastline.shp")
-#        coastpoly = os.path.join(coastdir, iid + "_coastline_polygons.shp")
-#        coastsmooth = os.path.join(coastdir, iid + "_coastline_smoothed.shp")
-#        coastscratch = os.path.join(coastdir, iid + "_coastline.pix")
-#        pca_image = os.path.join(pcadir, iid + "_pca.pix")
-#
+
 #        correction(pixfiles_m[i], hzrm_merge, atcor_merge)
-#        make_pca(pixfiles_m[i], pca_image, iid)
-#        coastline(pca_image, coastscratch, coastpoly, coastshp, coastsmooth, iid)
+        make_pca(pixfiles_m[i], pca_image, iid)
+        coastline(pca_image, coastscratch, coastpoly, coastshp, coastsmooth, iid)
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
