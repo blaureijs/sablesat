@@ -296,9 +296,10 @@ def enhance_pca(pcain, pcaout, identifier):
 #   identifier      - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
 # TODO see if there is any way to improve result - avoid inclusion of surf action on south side of island
-def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
+def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
     print "Generating coastline classification..."
     id_string="Coastline from file %s." % identifier
+    coastscr = os.path.join(coastdir, identifier + "_coastline.pix")
     fexport(fili=pixin,                                             # Input with PCA
             filo=coastscr,                                          # Output scratch file
             dbiw=[],
@@ -387,6 +388,60 @@ def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
     return lineout_smooth
 
 
+# ------------------------------------------------------------------------------------------------------------------- #
+# Define land_cover() function:                                              -- Must be run AFTER make_pca() completes
+#   1. Export PCA layers to scratch pix file.
+#   2. Add layer for classification result
+#   3. Run unsupervised k-means clustering algorithm and output to new layer
+#   4. Export classification raster to polygon shapefile
+#   5. Select Sable Island polygon(s) that contain selection points (selection_polygons.shp)
+#   6. Convert to polyline format and smooth line to remove zig-zag from raster cells.
+# Parameters:
+#   pixin           - The input PIX format file with PCA output layers.
+#   coastscr        - The output scratch pix file location for the classification layer.
+#   polygonout      - The output polygon format vector file.
+#   lineout         - The output polyline format vector file.
+#   lineout_smooth  - The output polylines with a line smoothing algorithm applied.
+#   identifier      - Unique identifier string read from input file name.
+# ------------------------------------------------------------------------------------------------------------------- #
+# TODO finish writing this function
+# TODO test kclus with different number of max clusters on different images - find optimal
+def land_cover(pixin, polygonout, lineout, lineout_smooth, identifier):
+    print "Generating land cover classification..."
+    id_string = "Land cover from file %s." % identifier
+    coastscr = os.path.join(coastdir, identifier + "_coastline.pix")
+    fexport(fili=pixin,                                             # Input with PCA
+            filo=coastscr,                                          # Output scratch file
+            dbiw=[],
+            dbic=[11, 12, 13],                                      # PCA channels
+            dbib=[],
+            dbvs=[],
+            dblut=[],
+            dbpct=[],
+            ftype="PIX",                                            # PIX filetype
+            foptions="")
+    pcimod(file=coastscr,                                           # Output scratch PIX file
+           pciop='ADD',                                             # Modification mode "Add"
+           pcival=[0, 2, 0, 0])                                     # Task - add two 16U channels
+    kclus(file=coastscr,                                            # Run classification on scratch file
+          dbic=[1, 2, 3],                                           # Use three PCA layers
+          dboc=[4],                                                 # Output to blank layer
+          numclus=[2],                                              # Two clusters - land, ocean
+          seedfile='',
+          maxiter=[20],
+          movethrs=[],
+          siggen="YES",
+          backval=[],
+          nsam=[])
+    ras2poly(fili=coastscr,                                         # Use scratch PIX file
+             dbic=[4],                                              # Use classification channel
+             filo=polygonout,                                       # Polygon SHP output location
+             smoothv="YES",                                         # Smooth boundaries
+             dbsd=id_string,                                        # Layer description string
+             ftype="SHP",                                           # Shapefile format
+             foptions="")
+
+
 def main():
     prep_workspace(pixdir, workspace_list)                      # Prepare workspace
 
@@ -425,13 +480,12 @@ def main():
         coastshp = os.path.join(coastdir, iid + "_coastline.shp")
         coastpoly = os.path.join(coastdir, iid + "_coastline_polygons.shp")
         coastsmooth = os.path.join(coastdir, iid + "_coastline_smoothed.shp")
-        coastscratch = os.path.join(coastdir, iid + "_coastline.pix")
         pca_image = os.path.join(pcadir, iid + "_pca.pix")
 
 
 #        correction(pixfiles_m[i], hzrm_merge, atcor_merge)
         make_pca(pixfiles_m[i], pca_image, iid)
-        coastline(pca_image, coastscratch, coastpoly, coastshp, coastsmooth, iid)
+        coastline(pca_image, coastpoly, coastshp, coastsmooth, iid)
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
