@@ -2,8 +2,8 @@
 # Script Name:	image_processing.py
 # Author:	    Brian Laureijs
 # Purpose:      Run functions on Sentinel-2 imagery for Sable Island.
-# Date:         20190502
-# Version:      0.1.0
+# Date:         20190508
+# Version:      0.1.1
 # Notice:       Created for academic assessment. Do not re-use or
 #               redistribute without permission from author.
 # =================================================================================================================== #
@@ -12,10 +12,6 @@
 import os                                           # Directory and
 import shutil                                       # file manipulation
 import arcpy                                        # Vector file manipulation
-from pci.fimport import *                           # PIX format conversion
-from pci.clip import *                              # Clipping to AOI
-from pci.resamp import *                            # Resample 60m bands
-from pci.datamerge import *                         # Merging bands
 from pci.str import str as stretch                  # Histogram stretching
 from pci.lut import *                               # Enhancement
 from pci.pcimod import *                            # Add layers
@@ -28,7 +24,7 @@ from pci.hazerem import *                           # Haze removal
 from pci.atcor import *                             # Atmospheric correction
 from pci.kclus import *                             # Unsupervised K-Means classifier
 from pci.ras2poly import *                          # Raster to Polygon conversion
-from pci.poly2bit import *                           # Polygon to Bitmap conversion
+from pci.poly2bit import *                          # Polygon to Bitmap conversion
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -56,7 +52,15 @@ workspace_list.append(coastdir)
 maskdir = os.path.join(workingdir, "masks")         # Cloud mask output
 workspace_list.append(maskdir)
 
-
+# ------------------------------------------------------------------------------------------------------------------- #
+# Define delete_shp() function
+#   1. Check if "input" directory exists and prompt user if it does not
+#   2. For rest of folders, create new if they do not exist, or delete contents and make new folder if they do.
+# Parameters:
+#   shapefile      - The input image file directory; has to be handled differently so contents are not deleted
+#   folder_list - The list of output folders that should be cleared before processing is started.
+# ------------------------------------------------------------------------------------------------------------------- #
+# TODO write function to delete shapefiles and their auxillary files
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define prep_workspace() function
 #   1. Check if "input" directory exists and prompt user if it does not
@@ -291,7 +295,7 @@ def enhance_pca(pcain, pcaout, identifier):
 #   lineout_smooth  - The output polylines with a line smoothing algorithm applied.
 #   identifier      - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
-
+# TODO see if there is any way to improve result - avoid inclusion of surf action on south side of island
 def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
     print "Generating coastline classification..."
     id_string="Coastline from file %s." % identifier
@@ -329,24 +333,56 @@ def coastline(pixin, coastscr, polygonout, lineout, lineout_smooth, identifier):
     workspace = os.path.join(workingdir,"sable.gdb")                # Define GDB workspace
     polygonout_lyr = identifier + "_polygon_lyr"                    # Define feature layer name for polygon output
     arcpy.env.workspace = workspace                                 # Set default workspace
-    arcpy.MakeFeatureLayer_management(polygonout,polygonout_lyr)    # Make polygon feature layer
-
+    arcpy.env.overwriteOutput = True
+    arcpy.env.outputCoordinateSystem = "PROJCS['WGS_1984_UTM_Zone_20N',GEOGCS['GCS_WGS_1984',DATUM['D_WGS_1984',\
+    SPHEROID['WGS_1984',6378137.0,298.257223563]],PRIMEM['Greenwich',0.0],UNIT['Degree',0.0174532925199433]],\
+    PROJECTION['Transverse_Mercator'],PARAMETER['False_Easting',500000.0],PARAMETER['False_Northing',0.0],PARAMETER\
+    ['Central_Meridian',-63.0],PARAMETER['Scale_Factor',0.9996],PARAMETER['Latitude_Of_Origin',0.0],UNIT['Meter',1.0]]"
+    arcpy.MakeFeatureLayer_management(polygonout, polygonout_lyr)   # Make polygon feature layer
+    arcpy.AddField_management(in_table=polygonout,                  # Add new dissolve field
+                              field_name="DISV",
+                              field_type="SHORT",
+                              field_precision=1,
+                              field_scale=0,
+                              field_is_nullable="NULLABLE",
+                              field_is_required="NON_REQUIRED")
+    cb="def calDisv(area):\\n    if area > 1000000000:\\n        return 0\\n    elif area < 1000000000:\\n        return 1"
+    arcpy.CalculateField_management(in_table=polygonout,            # Calculate dissolve field
+                                    field="DISV",
+                                    expression="calDisv(!Area!)",   # =0 if Ocean, =1 otherwise
+                                    expression_type="PYTHON",
+                                    code_block=cb)
+    polygons_dissolved = identifier + "_poly_dissolved"
+    arcpy.Dissolve_management(in_features=polygonout,               # Dissolve island polygons
+                              out_feature_class=polygons_dissolved,
+                              dissolve_field="DISV",
+                              multi_part="SINGLE_PART",
+                              unsplit_lines="DISSOLVE_LINES")
+    polygondisv_lyr = identifier + "_polygon_disv_lyr"
+    arcpy.MakeFeatureLayer_management(polygons_dissolved, polygondisv_lyr)  # Make polygon feature layer
+    arcpy.SelectLayerByAttribute_management(in_layer_or_view=polygondisv_lyr,
+                                            selection_type="NEW_SELECTION",
+                                            where_clause="DISV=1")
+    island_poly_dissolved = identifier + "island_poly_dissolved"
+    arcpy.CopyFeatures_management(in_features=polygondisv_lyr,
+                                  out_feature_class=island_poly_dissolved)
+    island_poly_disv_lyr = identifier + "_isl_poly_disv_lyr"
+    arcpy.MakeFeatureLayer_management(island_poly_dissolved, island_poly_disv_lyr)  # Make polygon feature layer
     # Select island polygons that contain selection circle polygons (small, basically points).
     # These points are placed where the island is likely to exist.
     # Remove selection of features larger than 1B sq. m - this feature most likely represents ocean.
     try:                                                    # Does feature layer 'selpoints_lyr' exist yet?
-        arcpy.SelectLayerByLocation_management(polygonout_lyr,'CONTAINS','selpoints_lyr','','NEW_SELECTION')
+        arcpy.SelectLayerByLocation_management(island_poly_disv_lyr,'CONTAINS','selpoints_lyr','','NEW_SELECTION')
     except:                                                 # Didn't work, so create 'selpoints_lyr' first
         arcpy.MakeFeatureLayer_management(selpoints, 'selpoints_lyr')
-        arcpy.SelectLayerByLocation_management(polygonout_lyr, 'CONTAINS', 'selpoints_lyr', '', 'NEW_SELECTION')
-    arcpy.SelectLayerByAttribute_management(polygonout_lyr,'REMOVE_FROM_SELECTION','"Area" > 1000000000')
+        arcpy.SelectLayerByLocation_management(island_poly_disv_lyr, 'CONTAINS', 'selpoints_lyr', '', 'NEW_SELECTION')
 
     # Convert polygon features to polyline
-    arcpy.PolygonToLine_management(polygonout_lyr,lineout,'IDENTIFY_NEIGHBORS')
+    arcpy.PolygonToLine_management(island_poly_disv_lyr,lineout,'IDENTIFY_NEIGHBORS')
 
     # Smooth line features to fix zig-zag from raster cells
     arcpy.cartography.SmoothLine(lineout,lineout_smooth,"PAEK",50,"")
-
+    # TODO add function to copy polygon and line shapefiles to GDB feature class
     os.remove(coastscr)
     return lineout_smooth
 
