@@ -431,9 +431,9 @@ def land_cover(pixin, polygonout, identifier):
            pciop='ADD',                                             # Modification mode "Add"
            pcival=[0, 2, 0, 0])                                     # Task - add two 16U channels
     kclus(file=landscr,                                             # Run classification on scratch file
-          dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],                                           # Use three PCA layers
+          dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],         # Use all image layers
           dboc=[14],                                                # Output to blank layer
-          numclus=[16],                                             # Clusters
+          numclus=[24],                                             # Clusters
           seedfile='',
           maxiter=[20],
           movethrs=[0.01],
@@ -460,12 +460,12 @@ def land_cover(pixin, polygonout, identifier):
             expo=[1])  # Linear stretch
     pctmake(file=landscr, # TODO this function is not completing, need to fix
             dbic=[3, 2, 1],
-            dblut=[18, 19, 20],
+            dblut=[],
             dbtc=[14],
             dbpct=[],
             mask=[],
             dbsn="TC_PCT",
-            dbsd=pct_string)
+            dbsd="PCT generated from RGB")
 #    ras2poly(fili=landscr,                                          # Use scratch PIX file
 #             dbic=[4],                                              # Use classification channel
 #             filo=polygonout,                                       # Polygon SHP output location
