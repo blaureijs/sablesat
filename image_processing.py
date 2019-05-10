@@ -12,6 +12,7 @@
 import os                                           # Directory and
 import shutil                                       # file manipulation
 import arcpy                                        # Vector file manipulation
+import time                                         # Processing timer
 from pci.str import str as stretch                  # Histogram stretching
 from pci.lut import *                               # Enhancement
 from pci.pcimod import *                            # Add layers
@@ -25,7 +26,8 @@ from pci.atcor import *                             # Atmospheric correction
 from pci.kclus import *                             # Unsupervised K-Means classifier
 from pci.ras2poly import *                          # Raster to Polygon conversion
 from pci.poly2bit import *                          # Polygon to Bitmap conversion
-from pci.cmprss8 import *                           # 8-Bit compression for PCT generation
+from pci.scale import *                             # 8-Bit compression for PCT generation
+from pci.datamerge import *
 from pci.pctmake import *                           # PCT generation from raster layer for classification result
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
@@ -101,7 +103,7 @@ def prep_workspace(indir,folder_list):
 #   bitmapout   - The output file for the bitmap layer.
 #   identifier  - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
-
+# TODO invert mask so it masks everything OTHER than clouds, and can be used as input mask with kclus
 def mask_clouds(pix60in, bitmapout, identifier):
     polygonout_name_full = identifier + "_cloud_polygons_full.shp"
     polygonout_full = os.path.join(maskdir,polygonout_name_full)
@@ -205,18 +207,17 @@ def correction(piximage, hazeout, atcorout):
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
-# Define make_pca() function:                    -- RUN ON RAW DATA ONLY
+# Define make_pca() function:                                                              -- Run on unmodified image
 #   1. Generate a linear stretch LUT for mosaicked pix
 #   2. Apply LUT enhancement to pix mosaic
 # Parameters:
 #   merged_input    - The merged input PIX format file with all bands.
 #   identifier      - A unique naming identifier for report output.
 # Note:
-#   Some tweaks here to ensure that the PCA stats report is output to
-#   the project workspace, instead of the default folder on the C:\ Drive.
-#   The code for this section was adapted from sample at
-#   https://support.pcigeomatics.com/hc/en-us/community/posts/
-#   203566673-Write-report-to-file-in-python (Shawn Melamed, 2015)
+#   Some tweaks here to ensure that the PCA stats report is output to the project workspace, instead of the default
+#   PCI folder on the C:\ Drive. The code for this section was adapted from sample at
+#   https://support.pcigeomatics.com/hc/en-us/community/posts/203566673-Write-report-to-file-in-python
+#   (Shawn Melamed, 2015)
 # ------------------------------------------------------------------------------------------------------------------- #
 
 def make_pca(merged_input, pca_out, identifier):
@@ -255,7 +256,7 @@ def make_pca(merged_input, pca_out, identifier):
 #   pcaout  - The output file for the enhanced PCA composite.
 # ------------------------------------------------------------------------------------------------------------------- #
 def enhance_pca(pcain, pcaout, identifier):
-    print "Generating look-up tables for file %s" %identifier
+    print "Generating look-up tables for file %s" % identifier
     stretch(file=pcain,
             dbic=[14],              # Stretch band 14
             dblut=[],
@@ -304,7 +305,7 @@ def enhance_pca(pcain, pcaout, identifier):
 # TODO see if there is any way to improve result - avoid inclusion of surf action on south side of island
 def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
     print "Generating coastline classification..."
-    id_string="Coastline from file %s." % identifier
+    id_string = "Coastline from file %s." % identifier
     coastscr = os.path.join(coastdir, identifier + "_coastline.pix")
     fexport(fili=pixin,                                             # Input with PCA
             filo=coastscr,                                          # Output scratch file
@@ -353,7 +354,7 @@ def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
                               field_scale=0,
                               field_is_nullable="NULLABLE",
                               field_is_required="NON_REQUIRED")
-    cb="def calDisv(area):\\n    if area > 1000000000:\\n        return 0\\n    elif area < 1000000000:\\n        return 1"
+    cb = "def calDisv(area):\\n    if area > 1000000000:\\n        return 0\\n    elif area < 1000000000:\\n        return 1"
     arcpy.CalculateField_management(in_table=polygonout,            # Calculate dissolve field
                                     field="DISV",
                                     expression="calDisv(!Area!)",   # =0 if Ocean, =1 otherwise
@@ -399,28 +400,26 @@ def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
 #   1. Export PCA layers to scratch pix file.
 #   2. Add layer for classification result
 #   3. Run unsupervised k-means clustering algorithm and output to new layer
-#   4. Export classification raster to polygon shapefile
-#   5. Select Sable Island polygon(s) that contain selection points (selection_polygons.shp)
-#   6. Convert to polyline format and smooth line to remove zig-zag from raster cells.
+#   4. Rescale RGB and Classification layers to 8-bit for use with pctmake()
+#   5. Use pctmake() to automatically generate a colour table from the rgb image layers.
+#   6. Export classification with colour table.
+#   7. Export classification as vector shapefile format.
 # Parameters:
 #   pixin           - The input PIX format file with PCA output layers.
-#   coastscr        - The output scratch pix file location for the classification layer.
-#   polygonout      - The output polygon format vector file.
-#   lineout         - The output polyline format vector file.
-#   lineout_smooth  - The output polylines with a line smoothing algorithm applied.
+#   vout            - The output classified vector file in SHP format.
+#   rout            - The output classified raster in TIF format.
 #   identifier      - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
-# TODO finish writing this function
-# TODO test kclus with different number of max clusters on different images - find optimal
-def land_cover(pixin, polygonout, identifier):
+def land_cover(pixin, vout, rout, identifier):
+    start_time = time.time()                                        # Start timer
     print "Generating land cover classification..."
-    cmprss8_string = "8-bit image generated from RGB channels from file %s" % identifier
-    pct_string = "PCT generated from RGB channels from file %s" % identifier
+    pct_string = "PCT generated using RGB channels from file %s" % identifier
     landscr = os.path.join(landcoverdir, identifier + "_landcover.pix")
+    rgb8bit = os.path.join(landcoverdir, identifier + "_rgb8bit.pix")
     fexport(fili=pixin,                                             # Input with PCA
             filo=landscr,                                           # Output scratch file
             dbiw=[],
-            dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],       # All channels
+            dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],       # Use all channels
             dbib=[],
             dbvs=[],
             dblut=[],
@@ -433,46 +432,53 @@ def land_cover(pixin, polygonout, identifier):
     kclus(file=landscr,                                             # Run classification on scratch file
           dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],         # Use all image layers
           dboc=[14],                                                # Output to blank layer
-          numclus=[24],                                             # Clusters
-          seedfile='',
+          numclus=[24],                                             # 24 clusters (not all will be used, but
+          seedfile='',                                              # this avoids cluster confusion
           maxiter=[20],
           movethrs=[0.01],
-          siggen="YES",
+          siggen="YES",                                             # Save signature layers
           backval=[],
           nsam=[])
-    stretch(file=landscr,
-            dbic=[1],  # Stretch band 1
+    print "Land cover classification for file %s completed." % identifier
+    print "Creating a colour table for classification result..."
+    scale(fili=landscr,                                             # Rescale layers to 8-bit for use with pctmake
+          filo=rgb8bit,
+          dbic=[1, 2, 3, 14],                                       # Rescale RGB and classification layer
+          dboc=[],
+          sfunct="LIN",
+          datatype="8U",                                            # Scale to 8-bit unsigned
+          ftype="PIX")                                              # PIX format
+    pctmake(file=rgb8bit,                                           # Make Colour table from rescaled RGB
+            dbic=[3, 2, 1],                                         # RGB layers
             dblut=[],
-            dbsn="LinLUT",
-            dbsd="Linear Stretch",
-            expo=[1])  # Linear stretch
-    stretch(file=landscr,
-            dbic=[2],  # Stretch band 2
-            dblut=[],
-            dbsn="LinLUT",
-            dbsd="Linear Stretch",
-            expo=[1])  # Linear stretch
-    stretch(file=landscr,
-            dbic=[3],  # Stretch band 3
-            dblut=[],
-            dbsn="LinLUT",
-            dbsd="Linear Stretch",
-            expo=[1])  # Linear stretch
-    pctmake(file=landscr, # TODO this function is not completing, need to fix
-            dbic=[3, 2, 1],
-            dblut=[],
-            dbtc=[14],
+            dbtc=[4],                                               # Classification layer
             dbpct=[],
             mask=[],
-            dbsn="TC_PCT",
-            dbsd="PCT generated from RGB")
-#    ras2poly(fili=landscr,                                          # Use scratch PIX file
-#             dbic=[4],                                              # Use classification channel
-#             filo=polygonout,                                       # Polygon SHP output location
-#             smoothv="YES",                                         # Smooth boundaries
-#             dbsd=id_string,                                        # Layer description string
-#             ftype="SHP",                                           # Shapefile format
-#             foptions="")
+            dbsn="TC_PCT",                                          # PCT name
+            dbsd=pct_string)                                        # PCT description
+    print "Colour table generated from RGB layers and applied to %s classification result." % identifier
+    print "Exporting classified raster to TIF format..."
+    fexport(fili=rgb8bit,                                           # Export raster
+            filo=rout,                                              # Raster output location
+            dbic=[4],                                               # Classification channel
+            dbpct=[2],                                              # Colour table channel
+            ftype="TIF",                                            # TIF format
+            foptions="")
+    print "Raster export complete. Wrote to %s." % rout
+    print "Exporting classification to shapefile..."
+    ras2poly(fili=landscr,                                          # Export to vector
+             dbic=[4],                                              # Use classification channel
+             filo=vout,                                             # Vector output location
+             smoothv="NO",                                          # Don't smooth boundaries
+             dbsd=id_string,                                        # Layer description string
+             ftype="SHP",                                           # Shapefile format
+             foptions="")
+    print "Vector export complete. Wrote to %s." % vout
+    os.remove(landscr)                                              # Delete intermediate PIX files
+    os.remove(rgb8bit)
+    completion_time = time.time() - start_time                      # Calculate time to complete
+    print "Land cover classification completed for image %s in %i seconds." % (identifier, completion_time)
+    # TODO add function to copy polygon and raster to file GDB
 
 
 def main():
@@ -513,13 +519,14 @@ def main():
         coastshp = os.path.join(coastdir, iid + "_coastline.shp")
         coastpoly = os.path.join(coastdir, iid + "_coastline_polygons.shp")
         coastsmooth = os.path.join(coastdir, iid + "_coastline_smoothed.shp")
-        landshp = os.path.join(coastdir, iid + "_landcover.shp")
+        landshp = os.path.join(landcoverdir, iid + "_landcover.shp")
+        landtif = os.path.join(landcoverdir, iid + "_landcover.tif")
         pca_image = os.path.join(pcadir, iid + "_pca.pix")
 
 
 #        correction(pixfiles_m[i], hzrm_merge, atcor_merge)
         make_pca(pixfiles_m[i], pca_image, iid)
-        land_cover(pca_image, landshp, iid)
+        land_cover(pca_image, landshp, landtif, iid)
 #        coastline(pca_image, coastpoly, coastshp, coastsmooth, iid)
 
 
@@ -530,11 +537,11 @@ def main():
 # ------------------------------------------------------------------------------------------------------------------- #
 
 print "="*50                                    # Header
-print "Sentinel-2 File Processing Script"
+print "Sentinel-2 Image Processing Script"
 print "="*50
 
 print "Current working directory is %s" % workingdir
-print "Converted PIX directory is %s" % pixdir
+print "Operations will be performed on PIX directory %s" % pixdir
 print "Running this script will DELETE existing data from output folders!"
 start = "Y"
 while start[0].upper() != "N":                  # Start a loop
