@@ -414,6 +414,7 @@ def land_cover(pixin, vout, rout, identifier):
     start_time = time.time()                                        # Start timer
     print "Generating land cover classification..."
     pct_string = "PCT generated using RGB channels from file %s" % identifier
+    id_string = "Classification from file %s." % identifier
     landscr = os.path.join(landcoverdir, identifier + "_landcover.pix")
     rgb8bit = os.path.join(landcoverdir, identifier + "_rgb8bit.pix")
     fexport(fili=pixin,                                             # Input with PCA
