@@ -25,6 +25,8 @@ from pci.atcor import *                             # Atmospheric correction
 from pci.kclus import *                             # Unsupervised K-Means classifier
 from pci.ras2poly import *                          # Raster to Polygon conversion
 from pci.poly2bit import *                          # Polygon to Bitmap conversion
+from pci.cmprss8 import *                           # 8-Bit compression for PCT generation
+from pci.pctmake import *                           # PCT generation from raster layer for classification result
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -51,6 +53,10 @@ workspace_list.append(coastdir)
 
 maskdir = os.path.join(workingdir, "masks")         # Cloud mask output
 workspace_list.append(maskdir)
+
+landcoverdir = os.path.join(workingdir,"landcover") # Classified land cover
+workspace_list.append(landcoverdir)
+
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define delete_shp() function
@@ -406,40 +412,67 @@ def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
 # ------------------------------------------------------------------------------------------------------------------- #
 # TODO finish writing this function
 # TODO test kclus with different number of max clusters on different images - find optimal
-def land_cover(pixin, polygonout, lineout, lineout_smooth, identifier):
+def land_cover(pixin, polygonout, identifier):
     print "Generating land cover classification..."
-    id_string = "Land cover from file %s." % identifier
-    coastscr = os.path.join(coastdir, identifier + "_coastline.pix")
+    cmprss8_string = "8-bit image generated from RGB channels from file %s" % identifier
+    pct_string = "PCT generated from RGB channels from file %s" % identifier
+    landscr = os.path.join(landcoverdir, identifier + "_landcover.pix")
     fexport(fili=pixin,                                             # Input with PCA
-            filo=coastscr,                                          # Output scratch file
+            filo=landscr,                                           # Output scratch file
             dbiw=[],
-            dbic=[11, 12, 13],                                      # PCA channels
+            dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],       # All channels
             dbib=[],
             dbvs=[],
             dblut=[],
             dbpct=[],
             ftype="PIX",                                            # PIX filetype
             foptions="")
-    pcimod(file=coastscr,                                           # Output scratch PIX file
+    pcimod(file=landscr,                                            # Output scratch PIX file
            pciop='ADD',                                             # Modification mode "Add"
            pcival=[0, 2, 0, 0])                                     # Task - add two 16U channels
-    kclus(file=coastscr,                                            # Run classification on scratch file
-          dbic=[1, 2, 3],                                           # Use three PCA layers
-          dboc=[4],                                                 # Output to blank layer
-          numclus=[2],                                              # Two clusters - land, ocean
+    kclus(file=landscr,                                             # Run classification on scratch file
+          dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],                                           # Use three PCA layers
+          dboc=[14],                                                # Output to blank layer
+          numclus=[16],                                             # Clusters
           seedfile='',
           maxiter=[20],
-          movethrs=[],
+          movethrs=[0.01],
           siggen="YES",
           backval=[],
           nsam=[])
-    ras2poly(fili=coastscr,                                         # Use scratch PIX file
-             dbic=[4],                                              # Use classification channel
-             filo=polygonout,                                       # Polygon SHP output location
-             smoothv="YES",                                         # Smooth boundaries
-             dbsd=id_string,                                        # Layer description string
-             ftype="SHP",                                           # Shapefile format
-             foptions="")
+    stretch(file=landscr,
+            dbic=[1],  # Stretch band 1
+            dblut=[],
+            dbsn="LinLUT",
+            dbsd="Linear Stretch",
+            expo=[1])  # Linear stretch
+    stretch(file=landscr,
+            dbic=[2],  # Stretch band 2
+            dblut=[],
+            dbsn="LinLUT",
+            dbsd="Linear Stretch",
+            expo=[1])  # Linear stretch
+    stretch(file=landscr,
+            dbic=[3],  # Stretch band 3
+            dblut=[],
+            dbsn="LinLUT",
+            dbsd="Linear Stretch",
+            expo=[1])  # Linear stretch
+    pctmake(file=landscr, # TODO this function is not completing, need to fix
+            dbic=[3, 2, 1],
+            dblut=[18, 19, 20],
+            dbtc=[14],
+            dbpct=[],
+            mask=[],
+            dbsn="TC_PCT",
+            dbsd=pct_string)
+#    ras2poly(fili=landscr,                                          # Use scratch PIX file
+#             dbic=[4],                                              # Use classification channel
+#             filo=polygonout,                                       # Polygon SHP output location
+#             smoothv="YES",                                         # Smooth boundaries
+#             dbsd=id_string,                                        # Layer description string
+#             ftype="SHP",                                           # Shapefile format
+#             foptions="")
 
 
 def main():
@@ -480,12 +513,14 @@ def main():
         coastshp = os.path.join(coastdir, iid + "_coastline.shp")
         coastpoly = os.path.join(coastdir, iid + "_coastline_polygons.shp")
         coastsmooth = os.path.join(coastdir, iid + "_coastline_smoothed.shp")
+        landshp = os.path.join(coastdir, iid + "_landcover.shp")
         pca_image = os.path.join(pcadir, iid + "_pca.pix")
 
 
 #        correction(pixfiles_m[i], hzrm_merge, atcor_merge)
         make_pca(pixfiles_m[i], pca_image, iid)
-        coastline(pca_image, coastpoly, coastshp, coastsmooth, iid)
+        land_cover(pca_image, landshp, iid)
+#        coastline(pca_image, coastpoly, coastshp, coastsmooth, iid)
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
