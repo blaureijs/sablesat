@@ -415,8 +415,8 @@ def land_cover(pixin, vout, rout, identifier):
     print "Generating land cover classification..."
     pct_string = "PCT generated using RGB channels from file %s" % identifier
     id_string = "Classification from file %s." % identifier
-    landscr = os.path.join(landcoverdir, identifier + "_landcover.pix")
-    rgb8bit = os.path.join(landcoverdir, identifier + "_rgb8bit.pix")
+    landscr = os.path.join(landcoverdir, identifier + "_landcover.pix")     # Scratch pix file
+    rgb8bit = os.path.join(landcoverdir, identifier + "_rgb8bit.pix")       # Rescaled 8-bit pix file
     fexport(fili=pixin,                                             # Input with PCA
             filo=landscr,                                           # Output scratch file
             dbiw=[],
@@ -449,11 +449,29 @@ def land_cover(pixin, vout, rout, identifier):
           sfunct="LIN",
           datatype="8U",                                            # Scale to 8-bit unsigned
           ftype="PIX")                                              # PIX format
+    stretch(file=rgb8bit,                                           # Creat lookup tables for histogram enhancement
+            dbic=[1],                                               # Stretch band 1
+            dblut=[],
+            dbsn="LinLUT",
+            dbsd="Linear Stretch",
+            expo=[1])                                               # Linear stretch
+    stretch(file=rgb8bit,
+            dbic=[2],                                               # Stretch band 2
+            dblut=[],
+            dbsn="LinLUT",
+            dbsd="Linear Stretch",
+            expo=[1])                                               # Linear stretch
+    stretch(file=rgb8bit,
+            dbic=[3],                                               # Stretch band 3
+            dblut=[],
+            dbsn="LinLUT",
+            dbsd="Linear Stretch",
+            expo=[1])                                               # Linear stretch
     pctmake(file=rgb8bit,                                           # Make Colour table from rescaled RGB
             dbic=[3, 2, 1],                                         # RGB layers
-            dblut=[],
+            dblut=[4, 3, 2],                                        # Apply LUT stretch enhancement
             dbtc=[4],                                               # Classification layer
-            dbpct=[],
+            dbpct=[],                                               # Make new PCT
             mask=[],
             dbsn="TC_PCT",                                          # PCT name
             dbsd=pct_string)                                        # PCT description
@@ -462,12 +480,12 @@ def land_cover(pixin, vout, rout, identifier):
     fexport(fili=rgb8bit,                                           # Export raster
             filo=rout,                                              # Raster output location
             dbic=[4],                                               # Classification channel
-            dbpct=[2],                                              # Colour table channel
+            dbpct=[5],                                              # Colour table channel (2,3,4 are LUT)
             ftype="TIF",                                            # TIF format
             foptions="")
     print "Raster export complete. Wrote to %s." % rout
     print "Exporting classification to shapefile..."
-    ras2poly(fili=landscr,                                          # Export to vector
+    ras2poly(fili=rgb8bit,                                          # Export to vector
              dbic=[4],                                              # Use classification channel
              filo=vout,                                             # Vector output location
              smoothv="NO",                                          # Don't smooth boundaries
@@ -478,11 +496,12 @@ def land_cover(pixin, vout, rout, identifier):
     os.remove(landscr)                                              # Delete intermediate PIX files
     os.remove(rgb8bit)
     completion_time = time.time() - start_time                      # Calculate time to complete
-    print "Land cover classification completed for image %s in %i seconds." % (identifier, completion_time)
+    print "Land cover classification process completed for image %s in %i seconds." % (identifier, completion_time)
     # TODO add function to copy polygon and raster to file GDB
 
 
 def main():
+    total_start_time = time.time()
     prep_workspace(pixdir, workspace_list)                      # Prepare workspace
 
     pixlist = os.listdir(pixdir)                                # Read converted PIX files to list
@@ -496,7 +515,7 @@ def main():
         if res == "60m":                                        # Add 60m atmospheric bands to list
             p60_add = os.path.join(pixdir, pixlist[i])
             pixfiles60.append(p60_add)
-        if itype == "merged":                                    # Add 10m and resampled 20m image stack to list
+        if itype == "merged":                                   # Add 10m and resampled 20m image stack to list
             pm_add = os.path.join(pixdir, pixlist[i])
             pixfiles_m.append(pm_add)
 
@@ -529,6 +548,10 @@ def main():
         make_pca(pixfiles_m[i], pca_image, iid)
         land_cover(pca_image, landshp, landtif, iid)
 #        coastline(pca_image, coastpoly, coastshp, coastsmooth, iid)
+
+    total_completion_time = time.time() - total_start_time
+    tct_minutes = total_completion_time / 60
+    print "Image processing completed in %i minutes." % tct_minutes
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
