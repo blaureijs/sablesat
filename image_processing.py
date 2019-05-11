@@ -29,6 +29,7 @@ from pci.poly2bit import *                          # Polygon to Bitmap conversi
 from pci.scale import *                             # 8-Bit compression for PCT generation
 from pci.datamerge import *
 from pci.pctmake import *                           # PCT generation from raster layer for classification result
+from pci.pctwrit import *
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -417,6 +418,7 @@ def land_cover(pixin, vout, rout, identifier):
     id_string = "Classification from file %s." % identifier
     landscr = os.path.join(landcoverdir, identifier + "_landcover.pix")     # Scratch pix file
     rgb8bit = os.path.join(landcoverdir, identifier + "_rgb8bit.pix")       # Rescaled 8-bit pix file
+    pct_txt = os.path.join(landcoverdir, identifier + "_pct.txt")
     fexport(fili=pixin,                                             # Input with PCA
             filo=landscr,                                           # Output scratch file
             dbiw=[],
@@ -475,6 +477,10 @@ def land_cover(pixin, vout, rout, identifier):
             mask=[],
             dbsn="TC_PCT",                                          # PCT name
             dbsd=pct_string)                                        # PCT description
+    pctwrit(file=rgb8bit,
+            dbpct=[5],
+            pctform="ATT",
+            tfile=pct_txt)
     print "Colour table generated from RGB layers and applied to %s classification result." % identifier
     print "Exporting classified raster to TIF format..."
     fexport(fili=rgb8bit,                                           # Export raster
