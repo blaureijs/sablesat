@@ -418,7 +418,6 @@ def land_cover(pixin, vout, rout, identifier):
     id_string = "Classification from file %s." % identifier
     landscr = os.path.join(landcoverdir, identifier + "_landcover.pix")     # Scratch pix file
     rgb8bit = os.path.join(landcoverdir, identifier + "_rgb8bit.pix")       # Rescaled 8-bit pix file
-    pct_txt = os.path.join(landcoverdir, identifier + "_pct.txt")
     fexport(fili=pixin,                                             # Input with PCA
             filo=landscr,                                           # Output scratch file
             dbiw=[],
@@ -436,7 +435,7 @@ def land_cover(pixin, vout, rout, identifier):
           dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],         # Use all image layers
           dboc=[14],                                                # Output to blank layer
           numclus=[24],                                             # 24 clusters (not all will be used, but
-          seedfile='',                                              # this avoids cluster confusion
+          seedfile='',                                              # this avoids cluster confusion)
           maxiter=[20],
           movethrs=[0.01],
           siggen="YES",                                             # Save signature layers
@@ -477,11 +476,39 @@ def land_cover(pixin, vout, rout, identifier):
             mask=[],
             dbsn="TC_PCT",                                          # PCT name
             dbsd=pct_string)                                        # PCT description
-    pctwrit(file=rgb8bit,
-            dbpct=[5],
-            pctform="ATT",
-            tfile=pct_txt)
     print "Colour table generated from RGB layers and applied to %s classification result." % identifier
+    print "Converting Raster PCT to ArcMap Colour Layer..."
+    pct_txt = os.path.join(landcoverdir, identifier + "_pct.txt")
+    pctwrit(file=rgb8bit,                                           # Export constructed PCT to text file
+            dbpct=[5],                                              # PCT channel
+            pctform="ATT",                                          # Write in attribute format
+            tfile=pct_txt)
+    clrfile = os.path.join(landcoverdir,identifier + "_landcover.clr") # TODO test everything below here
+    if os.path.isfile(clrfile):                                     # Using append mode, so make sure file is deleted
+        os.remove(clrfile)
+    pct = open(pct_txt, "r")                                        # Open exported PCT text file in read mode
+    clr = open(clrfile, "w")                                        # Open new CLR file in write mode
+    for line in pct:
+        if line[0] != "!" and line[3] == " ":                       # If line[3] not blank, line is unused range
+            a1 = line[8]                                            # and if line starts with "!" it is the file header
+            a2 = line[9]                                            # Number range is 0-255 so three possible digits
+            a3 = line[10]                                           # Assign as int() to ignore blank digit spaces
+            att = int(a1 + a2 + a3)                                 # Read number representing attribute
+            r1 = line[15]
+            r2 = line[16]
+            r3 = line[17]
+            red = int(r1 + r2 + r3)                                 # Read number representing red value
+            g1 = line[20]
+            g2 = line[21]
+            g3 = line[22]
+            green = int(g1 + g2 + g3)                               # Read number representing green value
+            b1 = line[25]
+            b2 = line[26]
+            b3 = line[27]
+            blue = int(b1 + b2 + b3)                                # Read number representing blue value
+            clr.write("%s %s %s %s\n" % (att, red, green, blue))    # Write attribute and RGB value to CLR file
+    clr.close()
+    print "Raster PCT converted to ArcMap colour layer."
     print "Exporting classified raster to TIF format..."
     fexport(fili=rgb8bit,                                           # Export raster
             filo=rout,                                              # Raster output location
@@ -490,6 +517,10 @@ def land_cover(pixin, vout, rout, identifier):
             ftype="TIF",                                            # TIF format
             foptions="")
     print "Raster export complete. Wrote to %s." % rout
+    print "Applying colour map to exported TIF file..."
+    arcpy.AddColormap_management(in_raster=rout,                    # TODO does this need to be a raster layer instead?
+                                 input_CLR_file=clrfile)
+    print "Colour map applied to %s." % rout
     print "Exporting classification to shapefile..."
     ras2poly(fili=rgb8bit,                                          # Export to vector
              dbic=[4],                                              # Use classification channel
