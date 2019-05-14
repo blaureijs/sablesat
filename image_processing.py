@@ -455,19 +455,19 @@ def land_cover(pixin, vout, rout, identifier):
             dblut=[],
             dbsn="LinLUT",
             dbsd="Linear Stretch",
-            expo=[1])                                               # Linear stretch
+            expo=[0.5])                                               # Linear stretch
     stretch(file=rgb8bit,
             dbic=[2],                                               # Stretch band 2
             dblut=[],
             dbsn="LinLUT",
             dbsd="Linear Stretch",
-            expo=[1])                                               # Linear stretch
+            expo=[0.5])                                               # Linear stretch
     stretch(file=rgb8bit,
             dbic=[3],                                               # Stretch band 3
             dblut=[],
             dbsn="LinLUT",
             dbsd="Linear Stretch",
-            expo=[1])                                               # Linear stretch
+            expo=[0.5])                                               # Linear stretch
     pctmake(file=rgb8bit,                                           # Make Colour table from rescaled RGB
             dbic=[3, 2, 1],                                         # RGB layers
             dblut=[4, 3, 2],                                        # Apply LUT stretch enhancement
@@ -509,18 +509,36 @@ def land_cover(pixin, vout, rout, identifier):
             clr.write("%s %s %s %s\n" % (att, red, green, blue))    # Write attribute and RGB value to CLR file
     clr.close()
     print "Raster PCT converted to ArcMap colour layer."
-    print "Exporting classified raster to TIF format..."
+    print "Exporting classified raster to tif..."
     fexport(fili=rgb8bit,                                           # Export raster
             filo=rout,                                              # Raster output location
             dbic=[4],                                               # Classification channel
             dbpct=[5],                                              # Colour table channel (2,3,4 are LUT)
             ftype="TIF",                                            # TIF format
             foptions="")
-    print "Raster export complete. Wrote to %s." % rout
-    print "Applying colour map to exported TIF file..."
-    arcpy.AddColormap_management(in_raster=rout,                    # TODO does this need to be a raster layer instead?
-                                 input_CLR_file=clrfile)
-    print "Colour map applied to %s." % rout
+    print "Classification exported to %s." % rout
+#    print "Applying colour map to layer file..."                   # TODO unique values symb and colour map application
+#    workspace = os.path.join(workingdir, "sable.gdb")  # Define GDB workspace
+#    ras_lyr = identifier + "_raster_lyr"  # Define feature layer name for polygon output
+#    lyr_out = rout[:-4] + ".lyr"
+#    arcpy.env.workspace = workspace  # Set default workspace
+#    arcpy.env.overwriteOutput = True
+#    arcpy.env.outputCoordinateSystem = "PROJCS['WGS_1984_UTM_Zone_20N',GEOGCS['GCS_WGS_1984',DATUM['D_WGS_1984',\
+#        SPHEROID['WGS_1984',6378137.0,298.257223563]],PRIMEM['Greenwich',0.0],UNIT['Degree',0.0174532925199433]],\
+#        PROJECTION['Transverse_Mercator'],PARAMETER['False_Easting',500000.0],PARAMETER['False_Northing',0.0],PARAMETER\
+#        ['Central_Meridian',-63.0],PARAMETER['Scale_Factor',0.9996],PARAMETER['Latitude_Of_Origin',0.0],UNIT['Meter',1.0]]"
+#    arcpy.BuildRasterAttributeTable_management(in_raster=rout)
+#    arcpy.MakeRasterLayer_management(in_raster=rout,
+#                                     out_rasterlayer=ras_lyr)
+#    arcpy.SaveToLayerFile_management(in_layer=ras_lyr,
+#                                     out_layer=lyr_out,
+#                                     is_relative_path="RELATIVE")
+#    arcpy.mapping.UpdateLayer(d)
+#    print "Exported layer file to %s" % lyr_out
+#    print "Applying colour map to layer file..."
+#   arcpy.AddColormap_management(in_raster=lyr_out,
+#                                 input_CLR_file=clrfile)
+#    print "Colour map applied to ArcMap layer file %s." % lyr_out
     print "Exporting classification to shapefile..."
     ras2poly(fili=rgb8bit,                                          # Export to vector
              dbic=[4],                                              # Use classification channel
