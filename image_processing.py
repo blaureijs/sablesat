@@ -106,6 +106,7 @@ def prep_workspace(indir,folder_list):
 # ------------------------------------------------------------------------------------------------------------------- #
 # TODO invert mask so it masks everything OTHER than clouds, and can be used as input mask with kclus
 def mask_clouds(pix60in, bitmapout, identifier):
+    start_time = time.time()
     polygonout_name_full = identifier + "_cloud_polygons_full.shp"
     polygonout_full = os.path.join(maskdir,polygonout_name_full)
     polygonout_name = identifier + "_cloud_polygons.shp"
@@ -144,7 +145,7 @@ def mask_clouds(pix60in, bitmapout, identifier):
     arcpy.FeatureClassToFeatureClass_conversion(in_features=polygonoutf_lyr,        # Extract only cloud polygons
                                                 out_path=maskdir,                   # Output location
                                                 out_name=polygonout_name,           # Output filename
-                                                where_clause='"Area" < 1000000000') # Anything <1B SM not clouds
+                                                where_clause='"Area" > 1000000000') # Anything <1B SM not clouds
     poly2bit(fili=polygonout,                                           # Convert polygons to bitmap layer
              dbvs=[1],                                                  # Input vector layer
              filo=bitmapout,                                            # Output file
@@ -161,8 +162,8 @@ def mask_clouds(pix60in, bitmapout, identifier):
     os.remove(pfull_prj)
     os.remove(pfull_pox)
     os.remove(pfull_shx)
-
-    print "Bitmap conversion complete. Output to \n\t%s" % bitmapout
+    completion_time = time.time() - start_time  # Calculate time to complete
+    print "Bitmap conversion completed in %i seconds. Output to \n\t%s" % (completion_time, bitmapout)
     return bitmapout
 
 
@@ -176,7 +177,7 @@ def mask_clouds(pix60in, bitmapout, identifier):
 #   hazeout     - The output haze corrected image.
 #   atcorout    - The output atmospherically corrected image.
 # ------------------------------------------------------------------------------------------------------------------- #
-def correction(piximage, hazeout, atcorout):
+def correction(piximage, hazeout, atcorout, enhanceout):
     print "-" * 50
     print "Processing masks..."
     masking(fili=piximage,                          # Input pix
@@ -205,6 +206,75 @@ def correction(piximage, hazeout, atcorout):
           outunits="16bit_Reflectance",             # Output
           filo=atcorout)                            # Corrected pix
     print "%s atmospheric correction completed." % piximage
+    stretch(file=atcorout,
+            dbic=[1],  # Stretch band 14
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[2],  # Stretch band 15
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[3],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[4],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[5],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[6],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[7],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[8],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[9],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    stretch(file=atcorout,
+            dbic=[10],  # Stretch band 16
+            dblut=[],
+            dbsn="SqLUT",
+            dbsd="SQRT Stretch",
+            expo=[0.5])  # Linear stretch
+    print "LUT generation complete."
+    print "Applying LUT enhancement..."
+    lut(fili=atcorout,
+        dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10],  # Use bands (14,15,16)
+        dblut=[3, 4, 5, 6, 7, 8, 9, 10, 11, 12],  # LUT segments
+        filo=enhanceout,  # Output mosaic
+        datatype="16U",  # 16-bit unsigned
+        ftype="TIF")  # Tif output
+    print "Enhancement complete."
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -304,7 +374,7 @@ def enhance_pca(pcain, pcaout, identifier):
 #   identifier      - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
 # TODO see if there is any way to improve result - avoid inclusion of surf action on south side of island
-def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
+def coastline(pixin, polygonout, lineout, lineout_smooth, identifier, clouds):
     print "Generating coastline classification..."
     id_string = "Coastline from file %s." % identifier
     coastscr = os.path.join(coastdir, identifier + "_coastline.pix")
@@ -312,7 +382,7 @@ def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
             filo=coastscr,                                          # Output scratch file
             dbiw=[],
             dbic=[11, 12, 13],                                      # PCA channels
-            dbib=[],
+            dbib=[2],
             dbvs=[],
             dblut=[],
             dbpct=[],
@@ -321,16 +391,29 @@ def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
     pcimod(file=coastscr,                                           # Output scratch PIX file
            pciop='ADD',                                             # Modification mode "Add"
            pcival=[0, 2, 0, 0])                                     # Task - add two 16U channels
-    kclus(file=coastscr,                                            # Run classification on scratch file
-          dbic=[1, 2, 3],                                           # Use three PCA layers
-          dboc=[4],                                                 # Output to blank layer
-          numclus=[2],                                              # Two clusters - land, ocean
-          seedfile='',
-          maxiter=[20],
-          movethrs=[],
-          siggen="YES",
-          backval=[],
-          nsam=[])
+    if clouds:
+        kclus(file=coastscr,                                        # Run classification on scratch file
+              dbic=[1, 2, 3],                                       # Use three PCA layers
+              dboc=[4],
+              mask=[2],                                             # Use the not-cloud mask
+              numclus=[2],                                          # Two clusters - land, ocean
+              seedfile='',
+              maxiter=[20],
+              movethrs=[],
+              siggen="YES",
+              backval=[],
+              nsam=[])
+    else:
+        kclus(file=coastscr,                                        # Run classification on scratch file
+              dbic=[1, 2, 3],                                       # Use three PCA layers
+              dboc=[4],                                             # Output to blank layer
+              numclus=[2],                                          # Two clusters - land, ocean
+              seedfile='',
+              maxiter=[20],
+              movethrs=[],
+              siggen="YES",
+              backval=[],
+              nsam=[])
     ras2poly(fili=coastscr,                                         # Use scratch PIX file
              dbic=[4],                                              # Use classification channel
              filo=polygonout,                                       # Polygon SHP output location
@@ -411,7 +494,7 @@ def coastline(pixin, polygonout, lineout, lineout_smooth, identifier):
 #   rout            - The output classified raster in TIF format.
 #   identifier      - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
-def land_cover(pixin, vout, rout, identifier):
+def land_cover(pixin, vout, rout, identifier, clouds):
     start_time = time.time()                                        # Start timer
     print "Generating land cover classification..."
     pct_string = "PCT generated using RGB channels from file %s" % identifier
@@ -422,7 +505,7 @@ def land_cover(pixin, vout, rout, identifier):
             filo=landscr,                                           # Output scratch file
             dbiw=[],
             dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],       # Use all channels
-            dbib=[],
+            dbib=[2],
             dbvs=[],
             dblut=[],
             dbpct=[],
@@ -431,16 +514,29 @@ def land_cover(pixin, vout, rout, identifier):
     pcimod(file=landscr,                                            # Output scratch PIX file
            pciop='ADD',                                             # Modification mode "Add"
            pcival=[0, 2, 0, 0])                                     # Task - add two 16U channels
-    kclus(file=landscr,                                             # Run classification on scratch file
-          dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],         # Use all image layers
-          dboc=[14],                                                # Output to blank layer
-          numclus=[24],                                             # 24 clusters (not all will be used, but
-          seedfile='',                                              # this avoids cluster confusion)
-          maxiter=[20],
-          movethrs=[0.01],
-          siggen="YES",                                             # Save signature layers
-          backval=[],
-          nsam=[])
+    if clouds:
+        kclus(file=landscr,                                         # Run classification on scratch file
+              dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],     # Use all image layers
+              dboc=[14],                                            # Output to blank layer
+              mask=[2],                                             # Use not-cloud mask
+              numclus=[24],                                         # 24 clusters (not all will be used, but
+              seedfile='',                                          # this avoids cluster confusion)
+              maxiter=[20],
+              movethrs=[0.01],
+              siggen="YES",                                         # Save signature layers
+              backval=[],
+              nsam=[])
+    else:
+        kclus(file=landscr,                                         # Run classification on scratch file
+              dbic=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],     # Use all image layers
+              dboc=[14],                                            # Output to blank layer
+              numclus=[24],                                         # 24 clusters (not all will be used, but
+              seedfile='',                                          # this avoids cluster confusion)
+              maxiter=[20],
+              movethrs=[0.01],
+              siggen="YES",  # Save signature layers
+              backval=[],
+              nsam=[])
     print "Land cover classification for file %s completed." % identifier
     print "Creating a colour table for classification result..."
     scale(fili=landscr,                                             # Rescale layers to 8-bit for use with pctmake
@@ -562,6 +658,20 @@ def main():
     pixlist = os.listdir(pixdir)                                # Read converted PIX files to list
     pixfiles_m = []                                             # Initialize list of 10m*10m converted files
     pixfiles60 = []                                             # Initialize list of 60m*60m converted files
+    print "Please sort the images into clear / partially cloudy."
+    print "Images with partial cloud cover will have a cloud mask applied."
+    good_ans = False
+    while not good_ans:
+        part_cloud = raw_input("Are the images being processed partially clouded? (Y/N):")
+        if part_cloud.lower()[0] == "y":
+            part_cloud = True
+            good_ans = True
+        elif part_cloud.lower()[0] == "n":
+            part_cloud = False
+            good_ans = True
+        else:
+            print "Invalid Response - answer Y or N."
+            good_ans = False
 
     for i in range(len(pixlist)):
         name_fields = pixlist[i].split("_")                     # Split filenames by underscore
@@ -574,14 +684,24 @@ def main():
             pm_add = os.path.join(pixdir, pixlist[i])
             pixfiles_m.append(pm_add)
 
-#    for i in range(len(pixfiles60)):
-#        id_fields = pixfiles60[i].split("_")
-#        mission = (id_fields[0])[-3:]
-#        date = id_fields[1]
-#        iid = mission + "_" + date
+    for i in range(len(pixfiles_m)):
+        id_fields = pixfiles_m[i].split("_")
+        mission = (id_fields[0])[-3:]
+        date = id_fields[1]
+        iid = mission + "_" + date
+        pca_image = os.path.join(pcadir, iid + "_pca.pix")
+
+        make_pca(pixfiles_m[i], pca_image, iid)
+
+    for i in range(len(pixfiles60)):
+        id_fields = pixfiles60[i].split("_")
+        mission = (id_fields[0])[-3:]
+        date = id_fields[1]
+        iid = mission + "_" + date
+        pca_image = os.path.join(pcadir, iid + "_pca.pix")
 
 #        cloud_bitmap = os.path.join(maskdir, iid + "_clouds.pix")
-#        mask_clouds(pixfiles60[i], cloud_bitmap, iid)
+        mask_clouds(pixfiles60[i], pca_image, iid)          # Write to bit layer [2] in merged 10m pix input file
 
     for i in range(len(pixfiles_m)):
         id_fields = pixfiles_m[i].split("_")
@@ -589,8 +709,9 @@ def main():
         date = id_fields[1]
         iid = mission + "_" + date
 
-        hzrm_merge = os.path.join(pixdir, iid + "_hzrm.pix")
+        hzrm_merge = os.path.join(corrdir, iid + "_hzrm.pix")
         atcor_merge = os.path.join(corrdir, iid + "_atcor.pix")
+        enhanced_tc = os.path.join(corrdir, iid + "_enhanced.tif")
         coastshp = os.path.join(coastdir, iid + "_coastline.shp")
         coastpoly = os.path.join(coastdir, iid + "_coastline_polygons.shp")
         coastsmooth = os.path.join(coastdir, iid + "_coastline_smoothed.shp")
@@ -598,11 +719,13 @@ def main():
         landtif = os.path.join(landcoverdir, iid + "_landcover.tif")
         pca_image = os.path.join(pcadir, iid + "_pca.pix")
 
-
-#        correction(pixfiles_m[i], hzrm_merge, atcor_merge)
-        make_pca(pixfiles_m[i], pca_image, iid)
-        land_cover(pca_image, landshp, landtif, iid)
-#        coastline(pca_image, coastpoly, coastshp, coastsmooth, iid)
+        if part_cloud:
+            land_cover(pca_image, landshp, landtif, iid, True)
+            coastline(pca_image, coastpoly, coastshp, coastsmooth, iid, True)
+        else:
+            land_cover(pca_image, landshp, landtif, iid, False)
+            coastline(pca_image, coastpoly, coastshp, coastsmooth, iid, False)
+        correction(pixfiles_m[i], hzrm_merge, atcor_merge, enhanced_tc)
 
     total_completion_time = time.time() - total_start_time
     tct_minutes = total_completion_time / 60
