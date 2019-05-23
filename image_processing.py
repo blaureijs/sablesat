@@ -62,15 +62,6 @@ workspace_list.append(landcoverdir)
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
-# Define delete_shp() function
-#   1. Check if "input" directory exists and prompt user if it does not
-#   2. For rest of folders, create new if they do not exist, or delete contents and make new folder if they do.
-# Parameters:
-#   shapefile      - The input image file directory; has to be handled differently so contents are not deleted
-#   folder_list - The list of output folders that should be cleared before processing is started.
-# ------------------------------------------------------------------------------------------------------------------- #
-# TODO write function to delete shapefiles and their auxillary files
-# ------------------------------------------------------------------------------------------------------------------- #
 # Define prep_workspace() function
 #   1. Check if "input" directory exists and prompt user if it does not
 #   2. For rest of folders, create new if they do not exist, or delete contents and make new folder if they do.
