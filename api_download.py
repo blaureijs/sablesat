@@ -12,7 +12,7 @@ import os                                                               # Direct
 import sentinelsat                                                      # Copernicus API access
 import untangle                                                         # Read copernicus cart XML download
 import zipfile                                                          # Unzip downloads
-
+import time                                                             # Time to complete
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define path variables
@@ -55,6 +55,7 @@ def download_single(api):
     except:
         print "An error occurred. Make sure your ID string is valid. Enter the full string, without quotes."
 
+
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define download_cart() function
 #   1. Read 'products.meta4' file from cart download.
@@ -63,6 +64,7 @@ def download_single(api):
 #   api     - The login credentials assigned by getlogin().
 # ------------------------------------------------------------------------------------------------------------------- #
 def download_cart(api):
+    total_start_time = time.time()
     xml_path = os.path.join(workingdir, 'products.meta4')
     uuid_list = []
     if os.path.isfile(xml_path):
@@ -75,8 +77,14 @@ def download_cart(api):
             uuid = url_sp[1]                                            # Assign uuid
             uuid_list.append(uuid)                                      # Append uuid code to a list
         for i in range(len(uuid_list)):
+            start_time = time.time()
             id = uuid_list[i]
             api.download(id)                                            # Download incrementally by UUID
+            completion_time = time.time() - start_time
+            print "Download completed in %i seconds." % completion_time
+        total_completion_time = time.time() - total_start_time
+        tct_mins = total_completion_time / 60
+        print "All downloads completed in %i minutes." % tct_mins
     else:
         print 'The Copernicus cart file was not found. Copy the "products.meta4" file to %s' % workingdir
 
@@ -88,15 +96,21 @@ def download_cart(api):
 # ------------------------------------------------------------------------------------------------------------------- #
 def unzip():
     zipfiles = []
+    total_start_time = time.time()
     allfiles = os.listdir(workingdir)
     for i in range(len(allfiles)):
         if (allfiles[i])[-4:] == '.zip':
             zipfiles.append(allfiles[i])                                # Add zip files to a list
     for i in range(len(zipfiles)):
+        start_time = time.time()
         with zipfile.ZipFile(zipfiles[i],'r') as zipobject:             # Read each zipfile
             zipobject.extractall(inputdir)                              # Extract to the input folder
         os.remove(zipfiles[i])                                          # Clean up the downloaded zip
-        print 'File %s extracted to %s.' % (zipfiles[i], inputdir)
+        completion_time = time.time() - start_time
+        print 'File %s extracted to %s in %i seconds.' % (zipfiles[i], inputdir, completion_time)
+    total_completion_time = time.time() - total_start_time
+    tct_mins = total_completion_time / 60
+    print "All files unzipped in %i minutes." % tct_mins
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
