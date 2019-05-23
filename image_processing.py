@@ -2,8 +2,8 @@
 # Script Name:	image_processing.py
 # Author:	    Brian Laureijs
 # Purpose:      Run functions on Sentinel-2 imagery for Sable Island.
-# Date:         20190508
-# Version:      0.1.1
+# Date:         20190523
+# Version:      0.2.0
 # Notice:       Created for academic assessment. Do not re-use or
 #               redistribute without permission from author.
 # =================================================================================================================== #
@@ -29,7 +29,7 @@ from pci.poly2bit import *                          # Polygon to Bitmap conversi
 from pci.scale import *                             # 8-Bit compression for PCT generation
 from pci.datamerge import *
 from pci.pctmake import *                           # PCT generation from raster layer for classification result
-from pci.pctwrit import *
+from pci.pctwrit import *                           # Write PCT to text format.
 # ------------------------------------------------------------------------------------------------------------------- #
 # Declare global variables
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -104,7 +104,6 @@ def prep_workspace(indir,folder_list):
 #   bitmapout   - The output file for the bitmap layer.
 #   identifier  - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
-# TODO invert mask so it masks everything OTHER than clouds, and can be used as input mask with kclus
 def mask_clouds(pix60in, bitmapout, identifier):
     start_time = time.time()
     polygonout_name_full = identifier + "_cloud_polygons_full.shp"
@@ -178,6 +177,7 @@ def mask_clouds(pix60in, bitmapout, identifier):
 #   atcorout    - The output atmospherically corrected image.
 # ------------------------------------------------------------------------------------------------------------------- #
 def correction(piximage, hazeout, atcorout, enhanceout):
+    start_time = time.time()
     print "-" * 50
     print "Processing masks..."
     masking(fili=piximage,                          # Input pix
@@ -274,7 +274,8 @@ def correction(piximage, hazeout, atcorout, enhanceout):
         filo=enhanceout,  # Output mosaic
         datatype="16U",  # 16-bit unsigned
         ftype="TIF")  # Tif output
-    print "Enhancement complete."
+    completion_time = time.time() - start_time                      # Calculate time to complete
+    print "Enhancement completed in %i seconds." % completion_time
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -292,6 +293,7 @@ def correction(piximage, hazeout, atcorout, enhanceout):
 # ------------------------------------------------------------------------------------------------------------------- #
 
 def make_pca(merged_input, pca_out, identifier):
+    start_time = time.time()
     print "Starting Principal Component Analysis for file %s" % identifier
     pca_rep = os.path.join(pcadir, "PCA_" + identifier + "_report.txt")
     fexport(fili=merged_input,
@@ -313,9 +315,9 @@ def make_pca(merged_input, pca_out, identifier):
     except PCIException, e:
         print e
     finally:
-        enableDefaultReport('term')  # Close the report file
-
-    print "PCA for %s completed." % identifier
+        enableDefaultReport('term')                             # Close the report file
+    completion_time = time.time() - start_time                  # Calculate time to complete
+    print "PCA for %s completed in %i seconds." % (identifier, completion_time)
 
 
 # ------------------------------------------------------------------------------------------------------------------- #
@@ -373,8 +375,8 @@ def enhance_pca(pcain, pcaout, identifier):
 #   lineout_smooth  - The output polylines with a line smoothing algorithm applied.
 #   identifier      - Unique identifier string read from input file name.
 # ------------------------------------------------------------------------------------------------------------------- #
-# TODO see if there is any way to improve result - avoid inclusion of surf action on south side of island
 def coastline(pixin, polygonout, lineout, lineout_smooth, identifier, clouds):
+    start_time = time.time()
     print "Generating coastline classification..."
     id_string = "Coastline from file %s." % identifier
     coastscr = os.path.join(coastdir, identifier + "_coastline.pix")
@@ -474,10 +476,10 @@ def coastline(pixin, polygonout, lineout, lineout_smooth, identifier, clouds):
 
     # Smooth line features to fix zig-zag from raster cells
     arcpy.cartography.SmoothLine(lineout,lineout_smooth,"PAEK",50,"")
-    # TODO add function to copy polygon and line shapefiles to GDB feature class
     os.remove(coastscr)
+    completion_time = time.time() - start_time                      # Calculate time to complete
+    print "Coastline vector completed in %i seconds. Written to file %s." % (completion_time, lineout_smooth)
     return lineout_smooth
-
 
 # ------------------------------------------------------------------------------------------------------------------- #
 # Define land_cover() function:                                              -- Must be run AFTER make_pca() completes
@@ -579,7 +581,7 @@ def land_cover(pixin, vout, rout, identifier, clouds):
             dbpct=[5],                                              # PCT channel
             pctform="ATT",                                          # Write in attribute format
             tfile=pct_txt)
-    clrfile = os.path.join(landcoverdir,identifier + "_landcover.clr") # TODO test everything below here
+    clrfile = os.path.join(landcoverdir,identifier + "_landcover.clr")
     if os.path.isfile(clrfile):                                     # Using append mode, so make sure file is deleted
         os.remove(clrfile)
     pct = open(pct_txt, "r")                                        # Open exported PCT text file in read mode
@@ -613,7 +615,10 @@ def land_cover(pixin, vout, rout, identifier, clouds):
             ftype="TIF",                                            # TIF format
             foptions="")
     print "Classification exported to %s." % rout
-#    print "Applying colour map to layer file..."                   # TODO unique values symb and colour map application
+# ------------------------------------------------------------------------------------------------------------------- #
+#    TODO this section is included for reference, although not functional currently. Future exploration of automatic
+#    TODO application of symbology would be desirable.
+#    print "Applying colour map to layer file..."
 #    workspace = os.path.join(workingdir, "sable.gdb")  # Define GDB workspace
 #    ras_lyr = identifier + "_raster_lyr"  # Define feature layer name for polygon output
 #    lyr_out = rout[:-4] + ".lyr"
@@ -635,6 +640,7 @@ def land_cover(pixin, vout, rout, identifier, clouds):
 #   arcpy.AddColormap_management(in_raster=lyr_out,
 #                                 input_CLR_file=clrfile)
 #    print "Colour map applied to ArcMap layer file %s." % lyr_out
+# ------------------------------------------------------------------------------------------------------------------- #
     print "Exporting classification to shapefile..."
     ras2poly(fili=rgb8bit,                                          # Export to vector
              dbic=[4],                                              # Use classification channel
@@ -648,7 +654,6 @@ def land_cover(pixin, vout, rout, identifier, clouds):
     os.remove(rgb8bit)
     completion_time = time.time() - start_time                      # Calculate time to complete
     print "Land cover classification process completed for image %s in %i seconds." % (identifier, completion_time)
-    # TODO add function to copy polygon and raster to file GDB
 
 
 def main():
@@ -745,15 +750,10 @@ print "="*50
 print "Current working directory is %s" % workingdir
 print "Operations will be performed on PIX directory %s" % pixdir
 print "Running this script will DELETE existing data from output folders!"
-start = "Y"
-while start[0].upper() != "N":                  # Start a loop
-    start = raw_input("Continue? (Y/N):")
-    if len(start) == 0:                         # Stop if no answer
-        start = "N"                             # Exit script
-        print " ----- Goodbye"*2, "-----"
-    elif start[0].upper() == "Y":               # Start if starts with y
-        main()                                  # Run main()
-        start = "N"
-    else:
-        start = "N"                             # Kill loop
-        print " ----- Goodbye"*2, "-----"       # Exit script
+start = raw_input("Continue? (Y/N):")
+if len(start) == 0:                         # Stop if no answer
+    print " ----- Goodbye"*2, "-----"
+elif start[0].upper() == "Y":               # Start if starts with y
+    main()                                  # Run main()
+else:
+    print " ----- Goodbye"*2, "-----"       # Exit script

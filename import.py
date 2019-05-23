@@ -2,8 +2,8 @@
 # Script Name:	import.py
 # Author:	    Brian Laureijs
 # Purpose:      Convert Sable Island Sentinel-2 imagery to PIX format for further processing.
-# Date:         20190502
-# Version:      0.2.1
+# Date:         20190523
+# Version:      0.2.2
 # Notice:       Created for academic assessment. Do not re-use or redistribute without permission from author.
 # =================================================================================================================== #
 # Import Libraries                                  # Requirements:
@@ -203,15 +203,10 @@ print "="*50
 print "Current working directory is %s" % workingdir
 print "Converted PIX directory is %s" % pixdir
 print "Running this script will DELETE existing data from output folders!"
-start = "Y"
-while start[0].upper() != "N":                  # Start a loop
-    start = raw_input("Continue? (Y/N):")
-    if len(start) == 0:                         # Stop if no answer
-        start = "N"                             # Exit script
-        print " ----- Goodbye"*2, "-----"
-    elif start[0].upper() == "Y":               # Start if starts with y
-        main()                                  # Run main()
-        start = "N"
-    else:
-        start = "N"                             # Kill loop
-        print " ----- Goodbye"*2, "-----"       # Exit script
+start = raw_input("Continue? (Y/N):")
+if len(start) == 0:                         # Stop if no answer
+    print " ----- Goodbye"*2, "-----"
+elif start[0].upper() == "Y":               # Start if starts with y
+    main()                                  # Run main()
+else:
+    print " ----- Goodbye"*2, "-----"       # Exit script
