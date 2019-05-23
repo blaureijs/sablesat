@@ -103,7 +103,7 @@ def unzip():
             zipfiles.append(allfiles[i])                                # Add zip files to a list
     for i in range(len(zipfiles)):
         start_time = time.time()
-        with zipfile.ZipFile(zipfiles[i],'r') as zipobject:             # Read each zipfile
+        with zipfile.ZipFile(zipfiles[i], 'r') as zipobject:             # Read each zipfile
             zipobject.extractall(inputdir)                              # Extract to the input folder
         os.remove(zipfiles[i])                                          # Clean up the downloaded zip
         completion_time = time.time() - start_time
@@ -152,7 +152,7 @@ goodsel = False
 while not goodsel:
     try:
         mode_sel = raw_input("Enter your selection (1 or 2):")
-        mode_sel =int(mode_sel)
+        mode_sel = int(mode_sel)
         if mode_sel > 0 and mode_sel < 3:
             goodsel = True
             again = "Y"
