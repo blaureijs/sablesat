@@ -1,0 +1,2 @@
+sentinelsat==0.12.2
+untangle==1.1.1
